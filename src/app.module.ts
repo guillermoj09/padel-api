@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { EventsModule } from './events/events.module';
+import { EventsModule } from './events/bookings.module';
 
 @Module({
   imports: [
@@ -11,11 +11,11 @@ import { EventsModule } from './events/events.module';
       username: 'postgres',
       password: 'postgres123',
       database: 'agenda_bd',
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      autoLoadEntities: true, // 👈 ¡Esto es clave!
+      entities: [__dirname + '/**/*.schema{.ts,.js}'],
+      autoLoadEntities: true,
       synchronize: true,
     }),
-    EventsModule, // 👈 Esto ya incluye controllers y providers
+    EventsModule,
   ],
 })
 export class AppModule {}
