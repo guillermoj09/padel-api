@@ -10,6 +10,7 @@ import {
 import { User } from './user.schema';
 import { Court } from './court.schema';
 import { Payment } from './payment.schema';
+import { ContactSchema } from './contact.schema';
 
 @Entity('bookings')
 export class BookingSchema {
@@ -19,10 +20,10 @@ export class BookingSchema {
   // Relaciones
   @ManyToOne(() => User, (user) => user.bookings)
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user: User | null;
 
   @RelationId((booking: BookingSchema) => booking.user)
-  userId: string;
+  userId: string | null;
 
   @ManyToOne(() => Court, (court) => court.bookings)
   @JoinColumn({ name: 'court_id' })
@@ -38,6 +39,13 @@ export class BookingSchema {
   @RelationId((booking: BookingSchema) => booking.payment)
   paymentId: string | null;
 
+  @ManyToOne(() => ContactSchema, (c) => c.bookings, { nullable: true })
+  @JoinColumn({ name: 'contact_id' })
+  contact: ContactSchema | null;
+
+  @RelationId((b: BookingSchema) => b.contact)
+  contactId: string | null;
+
   // Otros campos
   @Column('timestamptz')
   start_time: Date;
@@ -49,5 +57,5 @@ export class BookingSchema {
   status: string;
 
   @Column('date')
-  date: Date;
+  date: string;
 }

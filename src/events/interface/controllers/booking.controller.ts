@@ -22,15 +22,17 @@ export class BookingController {
     @Query('start') start: Date,
     @Query('end') end: Date,
   ) {
-    console.log(`${start} ${end}`);
+    //console.log(`${start} ${end}`);
     const data = this.getBookingsByCourtUseCase.execute(courtId, start, end);
     //console.log(data);
     return data;
   }
-
+  /*
   @Post()
   async createBooking(@Body() dto: CreateBookingDto) {
-    console.log(`aa ${dto.userId}`);
+    console.log(
+      `cuerpo ${dto.courtId} ${dto.endTime} ${dto.userId} ${dto.startTime}`,
+    );
     const bookingInput = {
       userId: dto.userId,
       courtId: dto.courtId,
@@ -42,5 +44,5 @@ export class BookingController {
     };
 
     return this.createBookingUseCase.execute(bookingInput);
-  }
+  }*/
 }

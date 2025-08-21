@@ -1,9 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventsModule } from './events/bookings.module';
+import { WebhookModule } from './whatsapp/webhook.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    ConfigModule.forRoot({
+      isGlobal: true, // disponible en toda la app
+    }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: 'localhost',
@@ -16,6 +22,7 @@ import { EventsModule } from './events/bookings.module';
       synchronize: true,
     }),
     EventsModule,
+    WebhookModule,
   ],
 })
 export class AppModule {}

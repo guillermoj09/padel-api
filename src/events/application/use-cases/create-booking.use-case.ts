@@ -9,7 +9,7 @@ interface CreateBookingInput {
   startTime: Date;
   endTime: Date;
   status: string;
-  date: Date;
+  date: string;
 }
 
 @Injectable()

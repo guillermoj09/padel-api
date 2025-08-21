@@ -7,9 +7,11 @@ import { GetBookingsUseCase } from './application/use-cases/get-booking.use-case
 import { BookingController } from './interface/controllers/booking.controller';
 import { BookingMapper } from './infrastructure/typeorm/mappers/booking.mapper';
 import { GetBookingsByCourtUseCase } from './application/use-cases/get-bookings-by-court.use-case';
+import { ContactsRepositoryTypeorm } from './infrastructure/typeorm/contacts.repository.typeorm';
+import { ContactSchema } from './infrastructure/typeorm/entities/contact.schema';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BookingSchema])],
+  imports: [TypeOrmModule.forFeature([BookingSchema, ContactSchema])],
   controllers: [BookingController],
   providers: [
     BookingMapper,
@@ -21,6 +23,12 @@ import { GetBookingsByCourtUseCase } from './application/use-cases/get-bookings-
       provide: 'BookingRepository',
       useClass: TypeOrmBookingRepository,
     },
+    ContactsRepositoryTypeorm,
+    { provide: 'ContactsRepository', useExisting: ContactsRepositoryTypeorm },
+  ],
+  exports: [
+    'BookingRepository',
+    'ContactsRepository', // <- ¡esto es lo que habilita la inyección cruzada!
   ],
 })
 export class EventsModule {}
