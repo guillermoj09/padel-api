@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventsModule } from './events/bookings.module';
 import { WebhookModule } from './whatsapp/webhook.module';
 import { ConfigModule } from '@nestjs/config';
+import { CourtsModule } from './courts/courts.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ConfigModule } from '@nestjs/config';
     }),
     EventsModule,
     WebhookModule,
+    CourtsModule,
   ],
 })
 export class AppModule {}

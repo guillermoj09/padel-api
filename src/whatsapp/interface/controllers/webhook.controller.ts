@@ -35,6 +35,7 @@ export class WebhookController {
     if (!msg) return;
 
     const from: string | undefined = msg.from;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const payload: string | undefined =
       msg.text?.body ??
       msg.interactive?.button_reply?.id ??
