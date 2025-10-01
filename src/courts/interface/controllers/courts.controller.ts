@@ -8,13 +8,17 @@ import { CourtsPresenter } from '../presenters/courts.presenter';
 export class CourtsController {
   constructor(private readonly listCourts: ListCourtsUseCase) {}
 
+  // src/courts/interface/controllers/courts.controller.ts
   @Get()
   async list(@Query() q: GetCourtsQuery) {
-    const query = new ListCourtsQuery(
-      q.q,
-      typeof q.active === 'string' ? q.active === 'true' : undefined,
-      q.limit ?? 10,
-    );
+    const active =
+      typeof q.active === 'string' ? q.active === 'true' : q.active;
+    const limitRaw = (q as any).limit;
+    const parsed =
+      typeof limitRaw === 'string' ? parseInt(limitRaw, 10) : Number(limitRaw);
+    const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+
+    const query = new ListCourtsQuery({ q: q.q, active, limit }); // <-- ahora sí
     const result = await this.listCourts.execute(query);
     return CourtsPresenter.toHttpList(result);
   }

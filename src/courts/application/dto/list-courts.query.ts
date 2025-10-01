@@ -1,7 +1,10 @@
+// src/courts/application/dto/list-courts.query.ts
 export class ListCourtsQuery {
-  constructor(
-    public readonly q?: string,
-    public readonly active?: boolean,
-    public readonly limit: number = 10,
-  ) {}
+  q?: string;
+  active?: boolean;
+  limit = 10;
+
+  constructor(init?: Partial<ListCourtsQuery>) {
+    Object.assign(this, init);
+  }
 }

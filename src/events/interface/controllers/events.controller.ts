@@ -1,6 +1,18 @@
-import { Body, Controller, Post, Query, Get, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Query,
+  Get,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { CreateBookingUseCase } from '../../application/use-cases/create-booking.use-case';
 import { GetBookingsByCourtUseCase } from 'src/events/application/use-cases/get-bookings-by-court.use-case';
+import { Roles } from 'src/auth/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
+import { AuthGuard } from '@nestjs/passport';
 
 export class CreateBookingDto {
   userId: string;
@@ -15,7 +27,8 @@ export class BookingController {
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly getBookingsByCourtUseCase: GetBookingsByCourtUseCase,
   ) {}
-
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('administrador')
   @Get('court/:courtId/events')
   async getBookingsByCourt(
     @Param('courtId') courtId: string,
@@ -27,6 +40,15 @@ export class BookingController {
     //console.log(data);
     return data;
   }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Roles('administrador')
+  @Get('me')
+  me(@Req() req: any) {
+    console.log(`hola ${process.env.JWT_SECRET}`);
+    return { user: req.user || null };
+  }
+
   /*
   @Post()
   async createBooking(@Body() dto: CreateBookingDto) {

@@ -1,7 +1,13 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, RelationId,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  RelationId,
 } from 'typeorm';
-import { User } from './user.schema';
+import { User } from '../../../../auth/infrastructure/typeorm/entities/user.schema';
 import { BookingSchema } from './booking.schema';
 
 @Entity('contacts')

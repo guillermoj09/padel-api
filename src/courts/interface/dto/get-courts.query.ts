@@ -1,19 +1,18 @@
-import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min, Max, IsBooleanString } from 'class-validator';
+// src/courts/interface/dto/get-courts.query.ts
+import { IsOptional, IsInt, Min, IsBoolean } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 export class GetCourtsQuery {
-  @IsOptional()
-  @IsString()
-  q?: string;
+  @IsOptional() q?: string;
 
   @IsOptional()
-  @IsBooleanString()
-  active?: string; // 'true' | 'false'
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true')
+  active?: boolean;
 
   @IsOptional()
-  @Transform(({ value }) => Number(value))
+  @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(50)
-  limit?: number; // la app capará a 10
+  limit: number = 10;
 }

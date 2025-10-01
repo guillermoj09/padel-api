@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Booking } from '../../../domain/entities/booking';
 import { BookingSchema } from '../entities/booking.schema';
-import { User } from '../entities/user.schema';
-import { Court } from '../entities/court.schema';
-import { Payment } from '../entities/payment.schema';
 
 @Injectable()
 export class BookingMapper {

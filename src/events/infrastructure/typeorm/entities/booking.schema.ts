@@ -7,7 +7,7 @@ import {
   JoinColumn,
   RelationId,
 } from 'typeorm';
-import { User } from './user.schema';
+import { User } from '../../../../auth/infrastructure/typeorm/entities/user.schema';
 import { Court } from './court.schema';
 import { Payment } from './payment.schema';
 import { ContactSchema } from './contact.schema';

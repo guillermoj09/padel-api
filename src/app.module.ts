@@ -4,6 +4,7 @@ import { EventsModule } from './events/bookings.module';
 import { WebhookModule } from './whatsapp/webhook.module';
 import { ConfigModule } from '@nestjs/config';
 import { CourtsModule } from './courts/courts.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CourtsModule } from './courts/courts.module';
       autoLoadEntities: true,
       synchronize: true,
     }),
+    AuthModule,
     EventsModule,
     WebhookModule,
     CourtsModule,
