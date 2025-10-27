@@ -1,0 +1,7 @@
+{
+  "booking.not_found": "Reserva no encontrada",
+  "booking.cancelled_already": "La reserva ya estaba cancelada",
+  "booking.cancelled": "Reserva cancelada correctamente",
+  "booking.forbidden": "No tienes permisos para cancelar esta reserva",
+  "booking.too_late": "Demasiado tarde para cancelar"
+}

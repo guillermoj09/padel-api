@@ -35,6 +35,9 @@ export class User {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @Column({ type: 'int', name: 'token_version', default: 0 })
+  tokenVersion: number;
+
   @OneToMany(() => BookingSchema, (b) => b.user, {
     cascade: false, // o true si así lo deseas
   })

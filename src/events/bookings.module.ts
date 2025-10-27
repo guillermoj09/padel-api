@@ -9,15 +9,17 @@ import { BookingMapper } from './infrastructure/typeorm/mappers/booking.mapper';
 import { GetBookingsByCourtUseCase } from './application/use-cases/get-bookings-by-court.use-case';
 import { ContactsRepositoryTypeorm } from './infrastructure/typeorm/contacts.repository.typeorm';
 import { ContactSchema } from './infrastructure/typeorm/entities/contact.schema';
+import { CancelBookingUseCase } from './application/use-cases/cancel-booking.use-case';
 
 @Module({
   imports: [TypeOrmModule.forFeature([BookingSchema, ContactSchema])],
   controllers: [BookingController],
   providers: [
     BookingMapper,
+    CancelBookingUseCase,
     CreateBookingUseCase,
     GetBookingsUseCase,
-    GetBookingsByCourtUseCase, // ✅ <- esto faltaba
+    GetBookingsByCourtUseCase,
     TypeOrmBookingRepository,
     {
       provide: 'BookingRepository',

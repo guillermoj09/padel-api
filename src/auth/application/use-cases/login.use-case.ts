@@ -15,16 +15,13 @@ export class LoginUseCase {
     const user = await this.usersReader.findByEmail(input.email);
     if (!user) throw new Error('Credenciales inválidas');
 
-    const ok = await this.passwordService.compare(
-      input.password,
-      user.password,
-    );
+    const ok = await this.passwordService.compare(input.password, user.password);
     if (!ok) throw new Error('Credenciales inválidas');
 
     const role = String(user.type).toLowerCase(); // 'administrador' | 'cliente'
 
     const token = await this.tokenSigner.sign(
-      { sub: user.id, email: user.email, type: role }, // ← ambos campos
+      { sub: user.id, email: user.email, type: role, v: user.tokenVersion as any },
       '7d',
     );
 

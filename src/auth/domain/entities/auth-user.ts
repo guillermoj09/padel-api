@@ -7,5 +7,7 @@ export class AuthUser {
     public readonly password: string,
     public readonly type: UserType,
     public readonly name?: string,
+    // NUEVO: versión de token para invalidación inmediata
+    public readonly tokenVersion: number = 0,
   ) {}
 }

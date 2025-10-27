@@ -8,6 +8,9 @@ import {
 import { AuthUser } from '../../domain/entities/auth-user';
 import { User } from '../events-bridge/user.schema.bridge';
 
+const toDomain = (u: User): AuthUser =>
+  new AuthUser(u.id, u.email, u.password, u.type as any, (u as any).name, (u as any).tokenVersion ?? 0);
+
 @Injectable()
 export class UsersWriterTypeorm implements UsersWriterPort {
   constructor(
@@ -16,22 +19,20 @@ export class UsersWriterTypeorm implements UsersWriterPort {
   ) {}
 
   async create(data: CreateUserInput): Promise<AuthUser> {
-    const exists = await this.repo.findOne({ where: { email: data.email } });
-    if (exists) throw new ConflictException('El email ya está registrado');
+    const exists = await this.repo.exist({ where: { email: data.email } });
+    if (exists) throw new ConflictException('Email ya registrado');
 
     const entity = this.repo.create({
       name: data.name,
       email: data.email,
-      password: data.password, // viene hasheado desde el use-case
+      password: data.password, // hash
       type: data.type,
     });
     const saved = await this.repo.save(entity);
-    return new AuthUser(
-      saved.id,
-      saved.email,
-      saved.password,
-      saved.type as any,
-      saved.name,
-    );
+    return toDomain(saved);
+  }
+
+  async incrementTokenVersion(userId: string): Promise<void> {
+    await this.repo.increment({ id: userId }, 'tokenVersion', 1);
   }
 }

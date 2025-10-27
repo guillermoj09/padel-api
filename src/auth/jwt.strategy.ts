@@ -1,7 +1,9 @@
 // src/auth/infrastructure/jwt/jwt.strategy.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { UsersReaderPort } from './domain/ports/users-reader.port';
+import { ConfigService } from '@nestjs/config';
 
 // Lee desde req.cookies.access_token; si no hay, parsea el header Cookie manualmente
 const robustCookieExtractor = (req: any): string | null => {
@@ -26,7 +28,10 @@ const robustCookieExtractor = (req: any): string | null => {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly usersReader: UsersReaderPort,
+  ) {
     const secret = process.env.JWT_SECRET;
     console.log(`${secret}`);
     if (!secret) {
@@ -49,9 +54,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     email: string;
     type?: string;
     role?: string;
+    v?: number;
   }) {
-    // normaliza rol por si usas RolesGuard
+    const user = await this.usersReader.findById(payload.sub);
+    if (!user) throw new UnauthorizedException('Usuario no existe');
+
+    if (typeof payload.v !== 'number' || payload.v !== user.tokenVersion) {
+      throw new UnauthorizedException('Token invalidado');
+    }
+
     const role = (payload.role ?? payload.type ?? 'cliente').toLowerCase();
-    return { id: payload.sub, email: payload.email, role, type: role };
+    return { id: user.id, email: user.email, role, type: role };
   }
 }

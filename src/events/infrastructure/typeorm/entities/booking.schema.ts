@@ -11,6 +11,7 @@ import { User } from '../../../../auth/infrastructure/typeorm/entities/user.sche
 import { Court } from './court.schema';
 import { Payment } from './payment.schema';
 import { ContactSchema } from './contact.schema';
+import { BookingStatus } from 'src/events/domain/entities/booking';
 
 @Entity('bookings')
 export class BookingSchema {
@@ -53,9 +54,41 @@ export class BookingSchema {
   @Column('timestamptz')
   end_time: Date;
 
-  @Column()
-  status: string;
+  @Column({
+    type: 'enum',
+    enum: BookingStatus,
+    enumName: 'booking_status',
+    name: 'status',
+    default: BookingStatus.Pending, // 👈 default en DB
+    nullable: false, // 👈 explícito (por claridad)
+  })
+  status: BookingStatus;
 
   @Column('date')
   date: string;
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    name: 'created_at',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  createdAt?: Date;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    name: 'updated_at',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  updatedAt?: Date;
+
+  // 👇 estos 3 son los que faltan si quieres guardar la cancelación
+  @Column({ type: 'timestamptz', nullable: true, name: 'canceled_at' })
+  canceledAt?: Date | null;
+
+  @Column({ type: 'varchar', nullable: true, name: 'cancel_reason' })
+  cancelReason?: string | null;
+
+  @Column({ type: 'varchar', nullable: true, name: 'canceled_by' })
+  canceledBy?: string | number | null;
 }

@@ -1,10 +1,11 @@
 // src/events/application/dto/create-booking.dto.ts
+import { Type } from 'class-transformer';
 import {
-  IsISO8601,
-  IsOptional,
+  IsDate,
   IsEnum,
-  IsString,
   IsNumber,
+  IsOptional,
+  IsString,
 } from 'class-validator';
 import { BookingStatus } from '../../domain/entities/booking';
 
@@ -13,10 +14,10 @@ export class CreateBookingDto {
   @IsNumber() courtId!: number;
   @IsOptional() @IsString() paymentId?: string | null;
 
-  @IsISO8601() startTime!: string; // ← string ISO
-  @IsISO8601() endTime!: string; // ← string ISO
+  @Type(() => Date) @IsDate() startTime!: Date; // ← Date
+  @Type(() => Date) @IsDate() endTime!: Date; // ← Date
 
   @IsOptional() @IsEnum(BookingStatus) status?: BookingStatus;
-  @IsISO8601() date!: string; // si usas yyyy-mm-dd, puedes dejar IsString()
+  @IsString() date!: string;
   @IsOptional() @IsString() contactId?: string | null;
 }

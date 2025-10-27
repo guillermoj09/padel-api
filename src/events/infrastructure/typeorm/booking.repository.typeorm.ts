@@ -1,11 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, Repository } from 'typeorm';
+import {
+  DeepPartial,
+  Repository,
+  DeleteResult,
+  LessThan,
+  MoreThan,
+} from 'typeorm';
 import { BookingRepository } from '../../domain/repositories/booking.repository';
-import { Booking } from '../../domain/entities/booking';
+import type { Booking } from '../../domain/entities/booking';
+import { BookingStatus } from '../../domain/entities/booking';
 import { BookingSchema } from './entities/booking.schema';
 import { BookingMapper } from './mappers/booking.mapper';
-import { Between } from 'typeorm';
 
 type CreateBookingInput = Omit<Booking, 'id'>; // tu modelo actual: userId puede ser null, date es Date
 
@@ -16,6 +22,73 @@ export class TypeOrmBookingRepository implements BookingRepository {
     private readonly repo: Repository<BookingSchema>,
     private readonly bookingMapper: BookingMapper,
   ) {}
+  async findWaPhoneByBookingId(id: string | number): Promise<string | null> {
+    const row = await this.repo
+      .createQueryBuilder('b')
+      .leftJoin('b.contact', 'c')
+      .select(['b.id', 'c.waPhone'])
+      .where('b.id = :id', { id: String(id) })
+      .getOne();
+
+    const phone = (row as any)?.contact?.waPhone ?? null;
+    return phone ? String(phone) : null;
+  }
+
+  async findById(id: string | number): Promise<Booking | null> {
+    const e = await this.repo.findOne({
+      where: { id: String(id) },
+      relations: { court: true, user: true, contact: true, payment: true },
+    });
+    return e ? this.bookingMapper.toDomain(e) : null;
+  }
+
+  // ejemplo dentro de tu repo TypeORM
+  async cancel(
+    id: string | number,
+    info: { reason?: string | null; by?: string | number | null },
+  ): Promise<Booking> {
+    return await this.repo.manager.transaction(async (em) => {
+      const r = em.getRepository(BookingSchema);
+
+      const b = await r.findOne({ where: { id: String(id) } });
+      if (!b) {
+        // La interfaz exige Promise<Booking>, no puede ser null → lanza error
+        throw new Error('Booking not found in cancel');
+      }
+
+      (b as any).status = 'cancelled';
+      (b as any).canceledAt = new Date();
+      (b as any).cancelReason = info.reason ?? null;
+      (b as any).canceledBy = info.by != null ? String(info.by) : null;
+
+      await r.save(b);
+
+      const reloaded = await em.getRepository(BookingSchema).findOne({
+        where: { id: String(id) },
+        relations: { court: true, user: true, contact: true, payment: true },
+      });
+      if (!reloaded) {
+        throw new Error('Booking disappeared after cancel');
+      }
+
+      // 👇 Devuelve dominio, no schema
+      return this.bookingMapper.toDomain(reloaded);
+    });
+  }
+
+  async existsByCourtAndStart(
+    courtId: number | string,
+    start: Date,
+  ): Promise<boolean> {
+    const found = await this.repo.findOne({
+      where: {
+        court: { id: Number(courtId) },
+        start_time: start,
+      },
+      select: { id: true }, // más eficiente
+    });
+    return !!found;
+  }
 
   async findAll(): Promise<Booking[]> {
     const bookingSchemas = await this.repo.find({
@@ -26,32 +99,21 @@ export class TypeOrmBookingRepository implements BookingRepository {
 
   async findByCourtAndDateRange(
     courtId: string,
-    start_time: Date,
-    end_time: Date,
+    start: Date,
+    end: Date,
   ): Promise<Booking[]> {
-    const rawBookings = await this.repo.find({
+    const rows = await this.repo.find({
       where: {
         court: { id: Number(courtId) },
-        start_time: Between(start_time, end_time), // ✅ CORRECTO
+        // solapamiento básico: empieza antes de que termine el rango y termina después de que empiece
+        start_time: LessThan(end),
+        end_time: MoreThan(start),
       },
-      relations: ['user', 'court', 'payment'],
+      relations: { user: true, court: true, payment: true },
     });
 
-    const bookings: Booking[] = rawBookings.map(
-      (b) =>
-        new Booking(
-          b.id,
-          b.userId,
-          b.courtId,
-          b.paymentId,
-          b.start_time,
-          b.end_time,
-          b.status,
-          b.date,
-        ),
-    );
-    console.log(bookings);
-    return bookings;
+    // ✅ nada de `new Booking(...)`, usa el mapper o un objeto literal
+    return rows.map((b) => this.toDomain(b));
   }
 
   async create(booking: CreateBookingInput): Promise<Booking> {
@@ -89,16 +151,21 @@ export class TypeOrmBookingRepository implements BookingRepository {
   }
 
   private toDomain(schema: BookingSchema): Booking {
-    return new Booking(
-      schema.id,
-      schema.userId ?? schema.user?.id ?? null, // ← null safe
-      (schema.courtId ?? schema.court?.id) as number, // asegura número
-      schema.paymentId ?? schema.payment?.id ?? null,
-      schema.start_time,
-      schema.end_time,
-      schema.status,
-      schema.date, // si cambias a string, usa: typeof schema.date==='string'?schema.date:schema.date.toISOString().slice(0,10)
-      schema.contactId ?? schema.contact?.id, // opcional
-    );
+    return {
+      id: schema.id,
+      userId: schema.userId ?? schema.user?.id ?? null, // si aquí tu tipo NO acepta null, cámbialo a undefined también
+      courtId: Number(schema.courtId ?? schema.court?.id),
+      paymentId: schema.paymentId ?? schema.payment?.id ?? null, // idem observación
+      startTime: schema.start_time,
+      endTime: schema.end_time,
+      status: schema.status,
+      date: schema.date,
+      contactId: schema.contactId ?? schema.contact?.id ?? undefined, // 👈 antes era null
+      createdAt: (schema as any).createdAt ?? undefined,
+      updatedAt: (schema as any).updatedAt ?? undefined,
+      canceledAt: (schema as any).canceledAt ?? undefined,
+      cancelReason: (schema as any).cancelReason ?? undefined,
+      canceledBy: (schema as any).canceledBy ?? undefined,
+    };
   }
 }
