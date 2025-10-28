@@ -72,6 +72,7 @@ export class CancelBookingUseCase {
       }
     } else if (who.kind === 'wa') {
       // Comprobación por teléfono del contacto
+      console.log("entro al cancelar");
       const waPhone = await this.repo.findWaPhoneByBookingId(booking.id);
       if (!waPhone)
         throw new ForbiddenException(

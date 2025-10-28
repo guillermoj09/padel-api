@@ -11,6 +11,8 @@ import { HandleIncomingMessageUseCase } from './application/use-cases/handle-inc
 import { EventsModule } from '../events/bookings.module';
 import { ContactsRepository } from 'src/events/domain/repositories/contacts.repository';
 import { BookingRepository } from 'src/events/domain/repositories/booking.repository';
+import { CancelBookingUseCase } from 'src/events/application/use-cases/cancel-booking.use-case';
+
 // import { BookingsModule as EventsModule } from '../events/bookings.module';
 
 @Module({
@@ -20,25 +22,29 @@ import { BookingRepository } from 'src/events/domain/repositories/booking.reposi
     WebhookService,
     WhatsappMessengerAdapter,
     MemorySessionStore,
+    CancelBookingUseCase,
     {
       provide: HandleIncomingMessageUseCase,
       useFactory: (
         messenger: WhatsappMessengerAdapter,
         store: MemorySessionStore,
         bookingRepo: BookingRepository,
-        contactsRepo: ContactsRepository, // ← 4to parámetro
+        contactsRepo: ContactsRepository,
+        cancelBookingUseCase: CancelBookingUseCase, // ← 4to parámetro
       ) =>
         new HandleIncomingMessageUseCase(
           messenger,
           store,
           bookingRepo,
           contactsRepo,
+          cancelBookingUseCase,
         ),
       inject: [
         WhatsappMessengerAdapter,
         MemorySessionStore,
         'BookingRepository',
         'ContactsRepository',
+        CancelBookingUseCase,
       ], // <- token
     },
   ],

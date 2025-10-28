@@ -1,57 +1,37 @@
+// src/whatsapp/application/use-cases/handle-incoming-message.use-case.ts
 import { Injectable, Inject } from '@nestjs/common';
 import { MessengerPort } from '../../domain/ports/messenger.port';
 import { SessionStorePort } from '../../domain/ports/session.store.port';
 import { Session } from '../../domain/types/session.types';
-import {
-  localTodayYMD,
-  localTomorrowYMD,
-  isValidHHmm,
-  makeStartEndTZ,
-  getAvailableHoursForCourt, // ⬅️ disponibilidad real contra BD
-  TZ,
-} from '../services/time.utils';
 import { BookingRepository } from '../../../events/domain/repositories/booking.repository';
 import { ContactsRepository } from '../../../events/domain/repositories/contacts.repository';
-
-const CANCHA_BTNS = [
-  { id: 'cancha_1', title: 'Cancha 1' },
-  { id: 'cancha_2', title: 'Cancha 2' },
-  { id: 'cancha_3', title: 'Cancha 3' },
-];
-const DATE_BTNS = [
-  { id: 'date_today', title: 'Hoy' },
-  { id: 'date_tomorrow', title: 'Mañana' },
-  { id: 'date_other', title: 'Otro día' },
-];
-
-// ✅ Helpers para DD-MM-AAAA
-const reDateDMY = /^\d{2}-\d{2}-\d{4}$/; // DD-MM-AAAA
-function dmyToYmd(dmy: string): string {
-  const [dd, mm, yyyy] = dmy.split('-').map(Number);
-  const d = String(dd).padStart(2, '0');
-  const m = String(mm).padStart(2, '0');
-  return `${yyyy}-${m}-${d}`; // YYYY-MM-DD
-}
-function ymdToDmy(ymd: string): string {
-  const [yyyy, mm, dd] = ymd.split('-');
-  return `${dd}-${mm}-${yyyy}`;
-}
-function normalizeE164(raw: string) {
-  const digits = raw.replace(/[^0-9+]/g, '');
-  return digits.startsWith('+') ? digits : `+${digits}`;
-}
-
-// 📌 Config de negocio (puedes moverlo a env)
-const BUSINESS = { open: '07:00', close: '23:00', slotMinutes: 60 };
+import { CancelBookingUseCase } from '../../../events/application/use-cases/cancel-booking.use-case';
+import { ReservationFlow } from '../flows/reservation.flow';
+import { CancelFlow } from '../flows/cancel.flow';
+import { normalizeE164 } from '../flows/helpers';
+import { TZ } from '../services/time.utils';
 
 @Injectable()
 export class HandleIncomingMessageUseCase {
+  private reservation: ReservationFlow;
+  private cancel: CancelFlow;
+
   constructor(
     private readonly messenger: MessengerPort,
     private readonly sessions: SessionStorePort,
     @Inject('BookingRepository') private readonly bookings: BookingRepository,
     @Inject('ContactsRepository') private readonly contacts: ContactsRepository,
-  ) {}
+    private readonly cancelBooking: CancelBookingUseCase,
+  ) {
+    this.reservation = new ReservationFlow(messenger, sessions, bookings);
+    this.cancel = new CancelFlow(
+      messenger,
+      sessions,
+      bookings,
+      contacts,
+      cancelBooking,
+    );
+  }
 
   private async getSession(from: string): Promise<Session> {
     return (await this.sessions.get(from)) ?? { step: 'idle' };
@@ -63,31 +43,24 @@ export class HandleIncomingMessageUseCase {
     await this.sessions.del(from);
   }
 
-  // 🔹 Centraliza la construcción y envío del mensaje de disponibilidad REAL
-  private async sendAvailability(from: string, ymd: string, courtId: string | number) {
-    const slots = await getAvailableHoursForCourt(
-      ymd,
-      courtId,
-      async (cId, dayStart, dayEnd) => {
-        const rows = await this.bookings.findByCourtAndDateRange(String(cId), dayStart, dayEnd);
-        // normaliza shape
-        return rows.map(r => ({ startTime: r.startTime, endTime: r.endTime }));
-      },
-      { open: BUSINESS.open, close: BUSINESS.close, slotMinutes: BUSINESS.slotMinutes }
-    );
-
-    const shown = ymdToDmy(ymd);
-    if (!slots.length) {
-      await this.messenger.sendText(
-        from,
-        `No hay horarios disponibles para *${shown}*.\nEscribe "mañana" o una fecha (DD-MM-AAAA).`
+  // Menú
+  private async handleMenu(from: string, session: Session) {
+    // asegura contactId
+    if (!session.contactId) {
+      const waPhone = normalizeE164(from);
+      const contact = await this.contacts.findOrCreateByWaPhone(
+        waPhone,
+        null,
+        TZ,
       );
-      return;
+      session.contactId = contact.id;
+      session.contactPhone = contact.waPhone;
+      await this.setSession(from, session);
     }
-    await this.messenger.sendText(
-      from,
-      `📅 Fecha *${shown}* seleccionada.\nHorarios disponibles: ${slots.join(', ')}\n\nEscribe la *hora* (HH:mm, 24h).`
-    );
+    await this.messenger.sendButtons(from, '¿Qué necesitas?', [
+      { id: 'opt_reserve', title: 'Reservar cancha' },
+      { id: 'opt_cancel', title: 'Cancelar reserva' },
+    ]);
   }
 
   async execute(from: string, rawPayload: string): Promise<void> {
@@ -95,10 +68,13 @@ export class HandleIncomingMessageUseCase {
     const p = payload.toLowerCase();
     const session = await this.getSession(from);
 
-    // Global
+    // Global escapes
     if (['cancel', 'cancelar', 'salir'].includes(p)) {
       await this.clearSession(from);
-      await this.messenger.sendText(from, 'Flujo cancelado. Escribe "menu" para comenzar.');
+      await this.messenger.sendText(
+        from,
+        'Flujo cancelado. Escribe "menu" para comenzar.',
+      );
       return;
     }
 
@@ -110,182 +86,74 @@ export class HandleIncomingMessageUseCase {
       p.includes('inicio') ||
       p === 'start'
     ) {
-      const waPhone = normalizeE164(from);
-      const contact = await this.contacts.findOrCreateByWaPhone(waPhone, null, TZ);
-      await this.setSession(from, { step: 'idle', contactId: contact.id });
-      await this.messenger.sendButtons(from, '¿Qué necesitas?', [
-        { id: 'opt_reserve', title: 'Reservar cancha' },
-      ]);
+      await this.handleMenu(from, session);
       return;
     }
 
-    // Inicio de reserva
-    if (payload === 'opt_reserve') {
-      if (!session.contactId) {
-        const waPhone = normalizeE164(from);
-        const contact = await this.contacts.findOrCreateByWaPhone(waPhone, null, TZ);
-        session.contactId = contact.id;
-      }
-      session.step = 'choose_cancha';
-      await this.setSession(from, session);
-      await this.messenger.sendButtons(from, 'Elige la cancha:', CANCHA_BTNS);
-      return;
-    }
+    // === Reserva ===
+    if (payload === 'opt_reserve') return this.reservation.start(from, session);
+    if (session.step === 'choose_cancha' && payload.startsWith('cancha_'))
+      return this.reservation.chooseCancha(from, session, payload);
+    if (session.step === 'choose_date')
+      return this.reservation.chooseDate(from, session, payload);
+    if (session.step === 'awaiting_other_date')
+      return this.reservation.awaitingOtherDate(from, session, payload);
+    if (session.step === 'choose_time')
+      return this.reservation.chooseTime(from, session, payload);
 
-    // 1) Cancha
-    if (session.step === 'choose_cancha' && payload.startsWith('cancha_')) {
-      const num = Number(payload.split('_')[1]);
-      if (![1, 2, 3].includes(num)) {
-        await this.messenger.sendButtons(from, 'Cancha inválida. Elige una:', CANCHA_BTNS);
-        return;
-      }
-      session.cancha = num;
-      session.step = 'choose_date';
-      await this.setSession(from, session);
-      await this.messenger.sendButtons(
-        from,
-        `Cancha ${num} seleccionada ✅\nAhora elige la fecha:`,
-        DATE_BTNS
-      );
-      return;
+    // === Cancelación ===
+    if (payload === 'opt_cancel') return this.cancel.list(from, session);
+    if (
+      session.step === 'cancel_choose' &&
+      payload.startsWith('CANCEL_PAGE:')
+    ) {
+      const pageNum = Number(payload.split(':')[1] || '2');
+      return this.cancel.paginate(from, session, pageNum);
     }
-
-    // 2) Fecha
-    if (session.step === 'choose_date') {
-      if (payload === 'date_today') {
-        session.date = localTodayYMD();     // YYYY-MM-DD
-        session.step = 'choose_time';
-        await this.setSession(from, session);
-        await this.sendAvailability(from, session.date, String(session.cancha!)); // ⬅️ REAL
-        return;
-      }
-      if (payload === 'date_tomorrow') {
-        session.date = localTomorrowYMD();  // YYYY-MM-DD
-        session.step = 'choose_time';
-        await this.setSession(from, session);
-        await this.sendAvailability(from, session.date, String(session.cancha!)); // ⬅️ REAL
-        return;
-      }
-      if (payload === 'date_other') {
-        session.step = 'awaiting_other_date';
-        await this.setSession(from, session);
+    if (
+      session.step === 'cancel_choose' &&
+      /^[1-3]$/.test(p) &&
+      session.cancelOptions?.length
+    ) {
+      const idx = Number(p) - 1;
+      const id = session.cancelOptions[idx];
+      if (!id) {
         await this.messenger.sendText(
           from,
-          'Escribe la fecha en formato **DD-MM-AAAA** (ej: 21-08-2025).'
+          'Opción inválida. Intenta de nuevo.',
         );
         return;
       }
+      return this.cancel.askConfirm(from, session, id);
     }
-
-    if (session.step === 'awaiting_other_date') {
-      if (!reDateDMY.test(payload)) {
+    if (session.step === 'cancel_choose' && payload.startsWith('CANCEL:')) {
+      const id = payload.split(':')[1]?.trim();
+      if (!id) {
         await this.messenger.sendText(
           from,
-          'Formato inválido. Usa **DD-MM-AAAA** (ej: 21-08-2025).'
+          'No entendí cuál reserva cancelar.',
         );
         return;
       }
-      const ymd = dmyToYmd(payload); // → YYYY-MM-DD
-      session.date = ymd;
-      session.step = 'choose_time';
-      await this.setSession(from, session);
-      await this.sendAvailability(from, session.date, String(session.cancha!));   // ⬅️ REAL
-      return;
+      return this.cancel.askConfirm(from, session, id);
     }
-
-    // 3) Hora (texto)
-    if (session.step === 'choose_time') {
-      if (!isValidHHmm(payload)) {
-        await this.messenger.sendText(from, 'Hora inválida. Usa HH:mm (24h), ej: 18:30');
-        return;
-      }
-
-      // Recalcula disponibilidad real para validar la hora ingresada
-      const avail = await getAvailableHoursForCourt(
-        session.date!,
-        String(session.cancha!),
-        async (cId, dayStart, dayEnd) => {
-          const rows = await this.bookings.findByCourtAndDateRange(String(cId), dayStart, dayEnd);
-          return rows.map(r => ({ startTime: r.startTime, endTime: r.endTime }));
-        },
-        { open: BUSINESS.open, close: BUSINESS.close, slotMinutes: BUSINESS.slotMinutes }
-      );
-
-      if (!avail.includes(payload)) {
-        const shown = ymdToDmy(session.date!);
-        if (!avail.length) {
-          await this.messenger.sendText(
-            from,
-            `No hay horarios disponibles para *${shown}*.\nEscribe "mañana" o una fecha (DD-MM-AAAA).`
-          );
-          return;
-        }
+    if (session.step === 'cancel_confirm') {
+      if (payload.startsWith('CONFIRM_CANCEL:'))
+        return this.cancel.confirm(from, session, payload);
+      if (payload === 'CANCEL_BACK' || ['no', 'volver'].includes(p)) {
         await this.messenger.sendText(
           from,
-          `Esa hora no está disponible para *${shown}*.\nDisponibles: ${avail.join(', ')}\nEnvía una hora válida (HH:mm).`
-        );
-        return;
-      }
-
-      session.time = payload;
-      await this.setSession(from, session);
-
-      // Instantes con TZ (UTC al guardar)
-      const { start, end } = makeStartEndTZ(session.date!, session.time!, TZ);
-
-      // Solape final (carrera)
-      const overlaps = await this.bookings.findByCourtAndDateRange(
-        String(session.cancha!),
-        start,
-        end,
-      );
-      if (overlaps.length > 0) {
-        await this.messenger.sendText(
-          from,
-          `⚠️ Ese horario se ocupó recién para la cancha ${session.cancha}. Elige otra *hora* (HH:mm) o cambia la fecha.`
-        );
-        return;
-      }
-
-      // Crear reserva
-      const toCreate: any = {
-        contactId: session.contactId!,
-        courtId: Number(session.cancha!),
-        paymentId: null,
-        userId: null,
-        startTime: start,
-        endTime: end,
-        status: 'pending',
-        date: session.date!, // YYYY-MM-DD
-      };
-      try {
-        await this.bookings.create(toCreate);
-        await this.messenger.sendText(
-          from,
-          `✅ *Reserva guardada*\n• Cancha: ${session.cancha}\n• Fecha: ${ymdToDmy(session.date!)}\n• Hora: ${session.time}\n\nEscribe "menu" para nueva reserva o "cancelar" para salir.`
+          'Operación cancelada. Escribe "menu" para comenzar.',
         );
         await this.clearSession(from);
-      } catch (e: any) {
-        if (e?.code === '23505' || /duplicate key value/i.test(e?.message || '')) {
-          await this.messenger.sendText(
-            from,
-            `⚠️ Ese horario ya está reservado para la cancha ${session.cancha}. Elige otra hora.`
-          );
-        } else {
-          console.error('[DB][BOOKING] Error:', e);
-          await this.messenger.sendText(
-            from,
-            '❌ Error al guardar la reserva. Intenta en unos minutos.'
-          );
-        }
+        return;
       }
-      return;
     }
 
     // Fallback
     await this.messenger.sendText(
       from,
-      'No entendí. Escribe "menu" para reservar.\nFlujo: cancha (botón) → fecha (botón/texto DD-MM-AAAA) → hora (texto HH:mm).',
+      'No entendí. Escribe "menu" para reservar o cancelar.\nFlujo: cancha → fecha → hora. Para cancelar: “Cancelar reserva”.',
     );
   }
 }
