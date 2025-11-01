@@ -1,12 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  DeepPartial,
-  Repository,
-  DeleteResult,
-  LessThan,
-  MoreThan,
-} from 'typeorm';
+import { DeepPartial, Repository, Not, LessThan, MoreThan } from 'typeorm';
 import { BookingRepository } from '../../domain/repositories/booking.repository';
 import type { Booking } from '../../domain/entities/booking';
 import { BookingStatus } from '../../domain/entities/booking';
@@ -108,6 +102,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
         // solapamiento básico: empieza antes de que termine el rango y termina después de que empiece
         start_time: LessThan(end),
         end_time: MoreThan(start),
+        status: Not(BookingStatus.Cancelled),
       },
       relations: { user: true, court: true, payment: true },
     });

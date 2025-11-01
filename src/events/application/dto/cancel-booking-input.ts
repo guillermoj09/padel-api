@@ -9,6 +9,6 @@ export class CancelBookingDto {
 
   // Acepta: admin:UUID | user:UUID | wa:+569xxxxxxx
   @IsString()
-  @Matches(/^(admin|user):[a-zA-Z0-9-]+$|^wa:\+\d{6,15}$/)
+  @IsOptional()
   by!: string;
 }

@@ -47,15 +47,16 @@ export class CancelBookingUseCase {
   ): Promise<Booking & { alreadyCancelled?: boolean }> {
     const booking = await this.repo.findById(id);
     if (!booking) throw new NotFoundException('Booking not found');
-
     const idempotent =
       (this.config.get('CANCEL_IDEMPOTENT') as any) !== 'false'; // default true
     if (booking.status === 'cancelled') {
       if (idempotent) return { ...(booking as any), alreadyCancelled: true };
       throw new ConflictException('Booking already cancelled');
     }
-
+    console.log("se cae");
     const who = parseBy(dto.by);
+    console.log("se paso");
+
     const grace = Number(this.config.get('CANCEL_GRACE_MINUTES') ?? 120) || 120;
     const allowInside =
       (this.config.get('CANCEL_ALLOW_CLIENT_INSIDE_GRACE') as any) === 'true';
@@ -72,7 +73,7 @@ export class CancelBookingUseCase {
       }
     } else if (who.kind === 'wa') {
       // Comprobación por teléfono del contacto
-      console.log("entro al cancelar");
+      console.log('entro al cancelar');
       const waPhone = await this.repo.findWaPhoneByBookingId(booking.id);
       if (!waPhone)
         throw new ForbiddenException(

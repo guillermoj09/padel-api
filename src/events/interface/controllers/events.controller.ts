@@ -7,9 +7,7 @@ import {
   Param,
   UseGuards,
   Req,
-  Delete,
-  HttpCode,
-  ParseIntPipe,
+  UnauthorizedException,
   UsePipes,
   Patch,
   ValidationPipe,
@@ -52,31 +50,39 @@ export class BookingController {
     return { user: req.user || null };
   }
 
+  @UseGuards(AuthGuard('jwt'))
   @Post()
-  async createBooking(@Body() dto: CreateBookingDto) {
-    console.log('entro');
-    console.log(
-      `cuerpo ${dto.courtId} ${dto.endTime} ${dto.userId} ${dto.startTime}`,
-    );
+  async createBooking(
+    @Body() dto: CreateBookingDto,
+    @Req() req: Request & { user?: any }, // 👈 recibe req
+  ) {
+    const userId = req.user?.id as string | undefined; // viene de JwtStrategy.validate()
+    if (!userId) throw new UnauthorizedException('Sin usuario');
+
     const bookingInput = {
-      userId: dto.userId,
+      userId,
       courtId: dto.courtId,
       paymentId: null,
       startTime: new Date(dto.startTime),
       endTime: new Date(dto.endTime),
       status: dto.status as BookingStatus,
-      date: nowYMD(), // día de la reserva (recomendado)
+      date: nowYMD(),
     };
 
     return this.createBookingUseCase.execute(bookingInput);
   }
+  @UseGuards(AuthGuard('jwt'))
   @Patch(':id/cancel')
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   // @ApiOkResponse({ description: 'Booking cancelado', type: BookingSwaggerModel })
   async cancelBookingById(
     @Param('id') id: string,
     @Body() dto: CancelBookingDto,
+    @Req() req: Request & { user?: any },
   ): Promise<Booking> {
+    const userId = req.user?.id as string | undefined; // viene de JwtStrategy.validate()
+    if (!userId) throw new UnauthorizedException('Sin usuario');
+    dto.by = `admin:${userId}`;
     return this.cancelBooking.execute(id, dto);
   }
 }

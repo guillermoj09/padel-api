@@ -113,7 +113,9 @@ export class ReservationFlow {
         'Escribe la fecha en formato **DD-MM-AAAA** (ej: 21-08-2025).',
       );
       return;
-    } else return;
+    } else {
+      return;
+    }
 
     session.step = 'choose_time';
     await this.setSession(from, session);
@@ -180,10 +182,55 @@ export class ReservationFlow {
       return;
     }
 
+    // 💡 hasta aquí está todo igual: ya tenemos hora válida
     session.time = payload;
+
+    // si ya tenía un nombre de la reserva anterior, damos opción de usarlo
+    if (session.reservationName) {
+      session.step = 'ask_name';
+      await this.setSession(from, session);
+      await this.messenger.sendText(
+        from,
+        `Tengo este nombre guardado: *${session.reservationName}*.\nEscribe **mismo** para usarlo, o escribe un nombre nuevo.`,
+      );
+      return;
+    }
+
+    // primera vez: pedir nombre
+    session.step = 'ask_name';
+    await this.setSession(from, session);
+    await this.messenger.sendText(from, '¿A nombre de quién va la reserva? ✍️');
+  }
+
+  // 👇 nuevo método
+  async askNameAndCreate(from: string, session: Session, payload: string) {
+    const typed = (payload ?? '').trim();
+
+    // permitir "mismo" para reutilizar el anterior
+    let name: string | undefined;
+    if (typed.toLowerCase() === 'mismo') {
+      name = session.reservationName;
+    } else if (typed) {
+      name = typed;
+    } else {
+      name = session.reservationName;
+    }
+
+    if (!name) {
+      await this.messenger.sendText(
+        from,
+        'Necesito el nombre de la reserva 📝 (puedes poner "mismo").',
+      );
+      return;
+    }
+
+    // guardamos para futuras reservas
+    session.reservationName = name;
     await this.setSession(from, session);
 
     const { start, end } = makeStartEndTZ(session.date!, session.time!, TZ);
+
+    // doble check por si se ocupó
     const overlaps = await this.bookings.findByCourtAndDateRange(
       String(session.cancha!),
       start,
@@ -194,13 +241,13 @@ export class ReservationFlow {
         from,
         `⚠️ Ese horario se ocupó recién para la cancha ${session.cancha}. Elige otra *hora* (HH:mm) o cambia la fecha.`,
       );
+      session.step = 'choose_time';
+      await this.setSession(from, session);
       return;
     }
-    console.log(`numero de celular ${session.contactId!}`);
-    console.log(`numero de celular ${session.contactId!}`);
 
     const toCreate: any = {
-      contactId: session.contactId!,
+      contactId: session.contactId ?? null,
       courtId: Number(session.cancha!),
       paymentId: null,
       userId: null,
@@ -208,13 +255,14 @@ export class ReservationFlow {
       endTime: end,
       status: 'pending',
       date: session.date!,
+      title: name, // 👈 aquí metemos el nombre
     };
 
     try {
       await this.bookings.create(toCreate);
       await this.messenger.sendText(
         from,
-        `✅ *Reserva guardada*\n• Cancha: ${session.cancha}\n• Fecha: ${ymdToDmy(session.date!)}\n• Hora: ${session.time}\n\nEscribe "menu" para nueva reserva o "cancelar" para salir.`,
+        `✅ *Reserva guardada*\n• Nombre: ${name}\n• Cancha: ${session.cancha}\n• Fecha: ${ymdToDmy(session.date!)}\n• Hora: ${session.time}\n\nEscribe "menu" para nueva reserva o "cancelar" para salir.`,
       );
       await this.sessions.del(from);
     } catch (e: any) {

@@ -18,6 +18,9 @@ export class BookingSchema {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  title?: string | null;
+
   // Relaciones
   @ManyToOne(() => User, (user) => user.bookings)
   @JoinColumn({ name: 'user_id' })

@@ -6,6 +6,7 @@ export type Step =
   | 'awaiting_other_date'
   | 'choose_time'
   | 'cancel_choose'
+  | 'ask_name'
   | 'cancel_confirm';
 
 export type Session = {
@@ -18,4 +19,5 @@ export type Session = {
   contactPhone?: string;
   bookingIdToCancel?: string;
   cancelOptions?: string[]; // ids para fallback 1/2/3
+  reservationName?: string; 
 };
