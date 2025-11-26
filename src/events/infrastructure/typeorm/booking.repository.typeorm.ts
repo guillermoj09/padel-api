@@ -111,8 +111,37 @@ export class TypeOrmBookingRepository implements BookingRepository {
     return rows.map((b) => this.toDomain(b));
   }
 
+  async findByCourtAndDateRangeAndStatus(
+    courtId: string,
+    start: Date,
+    end: Date,
+    status?: BookingStatus, // 👈 nuevo parámetro (opcional)
+  ): Promise<Booking[]> {
+    const where: any = {
+      court: { id: Number(courtId) },
+      // solapamiento básico: empieza antes de que termine el rango y termina después de que empiece
+      start_time: LessThan(end),
+      end_time: MoreThan(start),
+    };
+    console.log("repository");
+    if (status) {
+      // si me lo pasan, filtro exactamente por ese status
+      where.status = status;
+    } else {
+      // si no me pasan nada, mantengo la lógica anterior
+      where.status = Not(BookingStatus.Cancelled);
+    }
+
+    const rows = await this.repo.find({
+      where,
+      relations: { user: true, court: true, payment: true },
+    });
+    console.log("rows" +rows);
+    return rows.map((b) => this.toDomain(b));
+  }
+
   async create(booking: CreateBookingInput): Promise<Booking> {
-    console.log(`entro ${booking.userId}`);
+    console.log(`entro ${booking.title}`);
 
     const payload: DeepPartial<BookingSchema> = {
       // relaciones: asigna solo si hay id, si no pon null
@@ -124,7 +153,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
       payment: booking.paymentId
         ? ({ id: booking.paymentId as string } as any)
         : null,
-
+      title: booking.title,
       // columnas (ojo con los nombres en snake_case)
       start_time: booking.startTime, // Date (timestamptz)
       end_time: booking.endTime, // Date (timestamptz)
@@ -155,6 +184,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
       endTime: schema.end_time,
       status: schema.status,
       date: schema.date,
+      title: schema.title ?? null,
       contactId: schema.contactId ?? schema.contact?.id ?? undefined, // 👈 antes era null
       createdAt: (schema as any).createdAt ?? undefined,
       updatedAt: (schema as any).updatedAt ?? undefined,

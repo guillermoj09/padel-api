@@ -15,7 +15,7 @@ export class CreateBookingDto {
 
   @IsISO8601() startTime!: string; // ← string ISO
   @IsISO8601() endTime!: string; // ← string ISO
-
+  @IsString() title: string | null;
   @IsOptional() @IsEnum(BookingStatus) status?: BookingStatus;
   @IsOptional() @IsISO8601() date!: string; // si usas yyyy-mm-dd, puedes dejar IsString()
   @IsOptional() @IsString() contactId?: string | null;

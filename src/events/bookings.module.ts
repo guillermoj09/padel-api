@@ -10,6 +10,7 @@ import { GetBookingsByCourtUseCase } from './application/use-cases/get-bookings-
 import { ContactsRepositoryTypeorm } from './infrastructure/typeorm/contacts.repository.typeorm';
 import { ContactSchema } from './infrastructure/typeorm/entities/contact.schema';
 import { CancelBookingUseCase } from './application/use-cases/cancel-booking.use-case';
+import { GetCourtReservationsByDateRangeAndStatus } from './application/use-cases/get-bookings-by-court-by-range-and-state';
 
 @Module({
   imports: [TypeOrmModule.forFeature([BookingSchema, ContactSchema])],
@@ -20,6 +21,7 @@ import { CancelBookingUseCase } from './application/use-cases/cancel-booking.use
     CreateBookingUseCase,
     GetBookingsUseCase,
     GetBookingsByCourtUseCase,
+    GetCourtReservationsByDateRangeAndStatus,
     TypeOrmBookingRepository,
     {
       provide: 'BookingRepository',

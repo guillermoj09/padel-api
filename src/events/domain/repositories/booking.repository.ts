@@ -1,4 +1,4 @@
-import { Booking } from '../entities/booking';
+import { Booking, BookingStatus } from '../entities/booking';
 
 export interface BookingRepository {
   findById(id: number | string): Promise<Booking | null>;
@@ -19,6 +19,12 @@ export interface BookingRepository {
   ): Promise<Booking>;
 
   findWaPhoneByBookingId(id: string | number): Promise<string | null>;
+  findByCourtAndDateRangeAndStatus(
+    courtId: string,
+    from: Date,
+    to: Date,
+    status?: BookingStatus,
+  );
 }
 
 export const BOOKING_REPOSITORY = Symbol('BOOKING_REPOSITORY');

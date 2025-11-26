@@ -36,6 +36,28 @@ function toYmdIfDateOrString(v: any): string | undefined {
 
 @Injectable()
 export class BookingMapper {
+  // --- Helpers para armar un título legible ---
+  private courtName(schema: BookingSchema): string {
+    const id = pick<any>((schema as any).courtId, (schema as any).court?.id);
+    const name = (schema as any).court?.name;
+    return name ?? (id != null ? `Court ${id}` : 'Court');
+  }
+
+  private hhmm(v: any): string {
+    const d = v instanceof Date ? v : new Date(v);
+    // 24h HH:MM sin segundos
+    return isNaN(+d) ? '' : d.toISOString().substring(11, 16);
+  }
+
+  private buildTitleFallback(schema: BookingSchema): string {
+    const startRaw = pick<any>((schema as any).startTime, (schema as any).start_time);
+    const endRaw   = pick<any>((schema as any).endTime,   (schema as any).end_time);
+    const from = this.hhmm(startRaw);
+    const to   = this.hhmm(endRaw);
+    return `${this.courtName(schema)} · ${from}${to ? `-${to}` : ''}`;
+  }
+  // ------------------------------------------------
+
   /**
    * Mapea de TypeORM Schema → Dominio
    * - Tolera camelCase y snake_case en el schema.
@@ -102,7 +124,13 @@ export class BookingMapper {
     // - Si dominio espera string ISO → usa toIsoIfDate
     // - Si dominio espera Date → usa toDateIfString
     const startTime = toIsoIfDate(startTimeRaw); // o toDateIfString(startTimeRaw)
-    const endTime = toIsoIfDate(endTimeRaw); // o toDateIfString(endTimeRaw)
+    const endTime   = toIsoIfDate(endTimeRaw);   // o toDateIfString(endTimeRaw)
+
+    // Title: usa columna si existe; si no, fallback legible
+    const title: string =
+      (schema as any).title ??
+      (schema as any).Title ?? // por si hubo un mapeo diferente
+      this.buildTitleFallback(schema);
 
     return {
       id: (schema as any).id,
@@ -113,7 +141,6 @@ export class BookingMapper {
       startTime,
       endTime,
       status,
-
       date: (toYmdIfDateOrString(dateRaw) ??
         (typeof dateRaw === 'string' && dateRaw) ??
         new Date().toISOString().slice(0, 10)) as string,
@@ -123,6 +150,9 @@ export class BookingMapper {
       canceledAt: toIsoIfDate(canceledAtRaw) ?? undefined,
       cancelReason: cancelReason ?? undefined,
       canceledBy: canceledBy ?? undefined,
+
+      // requerido en el dominio
+      title,
     };
   }
 
@@ -133,12 +163,12 @@ export class BookingMapper {
   /**
    * Dominio → TypeORM Schema (para create/update)
    * - Preferimos camelCase (startTime/endTime) que es lo que tienes en tu BookingSchema.
-   * - Si tu DB/columns siguen en snake_case, puedes setear ambos por compatibilidad.
+   * - Si tu DB/columns siguen en snake_case, seteamos snake_case por compatibilidad.
    */
   toSchema(domain: Booking): Partial<BookingSchema> {
     const rel = (id: any) => (id ? ({ id } as any) : null);
 
-    // ⚠️ Si tu BookingSchema define startTime/endTime como Date, convierte aquí:
+    // ⚠️ Si tu BookingSchema define start_time/end_time como Date, convierte aquí si es necesario.
     // const start = domain.startTime instanceof Date ? domain.startTime : new Date(domain.startTime);
     // const end   = domain.endTime   instanceof Date ? domain.endTime   : new Date(domain.endTime);
 
@@ -149,16 +179,19 @@ export class BookingMapper {
       court: rel(domain.courtId as any),
       payment: rel(domain.paymentId as any),
 
-      // camelCase (propiedades esperadas por tu BookingSchema)
+      // columnas principales
       start_time: (domain as any).startTime,
       end_time: (domain as any).endTime,
       status: domain.status as any,
       date: domain.date as any,
+
+      // persistimos title si tu entidad tiene la columna; si no, TypeORM la ignorará
+      title: (domain as any).title ?? undefined,
     };
 
-    // Si tu columna física sigue siendo snake_case y quieres compatibilidad:
-    (partial as any).start_time = (domain as any).startTime;
-    (partial as any).end_time = (domain as any).endTime;
+    // Si además mantienes camelCase en la entidad TypeORM, puedes duplicar así:
+    // (partial as any).startTime = (domain as any).startTime;
+    // (partial as any).endTime   = (domain as any).endTime;
 
     return partial;
   }

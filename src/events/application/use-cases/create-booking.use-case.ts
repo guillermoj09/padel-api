@@ -18,11 +18,13 @@ export class CreateBookingUseCase {
       startTime: new Date(dto.startTime),
       endTime: new Date(dto.endTime),
       date: dto.date,
-      status: dto.status ?? BookingStatus.Pending,
+      status: dto.status ?? BookingStatus.Confirmed,
       contactId: dto.contactId ?? undefined,
+      title: dto.title ?? null,
       // createdAt/updatedAt si no los agrega la DB:
       // createdAt: new Date(), updatedAt: new Date(),
     };
+    console.log(toCreate);
     return this.repo.create(toCreate);
   }
 }

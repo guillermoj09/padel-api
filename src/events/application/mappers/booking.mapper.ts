@@ -20,6 +20,7 @@ export class BookingMapper {
     const status: BookingStatus = dto.status ?? BookingStatus.Pending;
 
     return {
+      title: dto.title ?? null,
       userId: dto.userId ?? null,
       courtId: dto.courtId,
       paymentId: dto.paymentId ?? null,

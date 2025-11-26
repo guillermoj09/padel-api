@@ -13,7 +13,7 @@ export class CreateBookingDto {
   @IsOptional() @IsString() userId?: string | null;
   @IsNumber() courtId!: number;
   @IsOptional() @IsString() paymentId?: string | null;
-
+  @IsString() title?: string | null;
   @Type(() => Date) @IsDate() startTime!: Date; // ← Date
   @Type(() => Date) @IsDate() endTime!: Date; // ← Date
 

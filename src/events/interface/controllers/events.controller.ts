@@ -21,7 +21,9 @@ import { CreateBookingDto } from '../dto/create-booking.dto';
 import { nowYMD } from '../utils/date';
 import { CancelBookingDto } from 'src/events/application/dto/cancel-booking-input';
 import { CancelBookingUseCase } from '../../application/use-cases/cancel-booking.use-case';
+import { GetCourtReservationsByDateRangeAndStatus } from '../../application/use-cases/get-bookings-by-court-by-range-and-state';
 import { Booking, BookingStatus } from 'src/events/domain/entities/booking';
+import { title } from 'process';
 
 @Controller('bookings')
 export class BookingController {
@@ -29,6 +31,7 @@ export class BookingController {
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly getBookingsByCourtUseCase: GetBookingsByCourtUseCase,
     private readonly cancelBooking: CancelBookingUseCase,
+    private readonly getCourtReservationsByDateRangeAndStatus: GetCourtReservationsByDateRangeAndStatus,
   ) {}
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('administrador')
@@ -56,9 +59,10 @@ export class BookingController {
     @Body() dto: CreateBookingDto,
     @Req() req: Request & { user?: any }, // 👈 recibe req
   ) {
+    console.log('entro 1');
     const userId = req.user?.id as string | undefined; // viene de JwtStrategy.validate()
     if (!userId) throw new UnauthorizedException('Sin usuario');
-
+    console.log(`entro ${dto.title} `);
     const bookingInput = {
       userId,
       courtId: dto.courtId,
@@ -66,6 +70,7 @@ export class BookingController {
       startTime: new Date(dto.startTime),
       endTime: new Date(dto.endTime),
       status: dto.status as BookingStatus,
+      title: dto.title,
       date: nowYMD(),
     };
 
@@ -84,5 +89,25 @@ export class BookingController {
     if (!userId) throw new UnauthorizedException('Sin usuario');
     dto.by = `admin:${userId}`;
     return this.cancelBooking.execute(id, dto);
+  }
+
+  @Get('court/:courtId')
+  async getBookignsByRange(
+    @Param('courtId') courtId: string,
+    @Query('from') from: Date,
+    @Query('to') to: Date,
+    @Query('status') status: BookingStatus,
+  ) {
+    // Mapear string de la query a BookingStatus (o undefined si es inválido)
+    let bookingStatus: BookingStatus | undefined = undefined;
+    //console.log(status);
+
+    console.log("bookingStatus "+status)
+    return this.getCourtReservationsByDateRangeAndStatus.execute(
+      courtId,
+      status,
+      from,
+      to,
+    );
   }
 }

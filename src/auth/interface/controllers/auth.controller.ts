@@ -38,14 +38,15 @@ export class AuthController {
       email: dto.email,
       password: dto.password,
     });
-
+    console.log("Login" + access_token);
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('access_token', access_token, {
       httpOnly: true,
-      secure: isProd,
+      secure: false,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });
+    console.log("Fallo");
 
     return { ok: true };
   }

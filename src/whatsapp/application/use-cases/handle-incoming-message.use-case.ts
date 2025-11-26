@@ -25,11 +25,7 @@ export class HandleIncomingMessageUseCase {
     private readonly contacts: ContactsRepository,
     private readonly cancelBooking: CancelBookingUseCase,
   ) {
-    this.reservation = new ReservationFlow(
-      messenger,
-      sessions,
-      bookings,
-    );
+    this.reservation = new ReservationFlow(messenger, sessions, bookings);
     this.cancel = new CancelFlow(
       messenger,
       sessions,
@@ -50,11 +46,7 @@ export class HandleIncomingMessageUseCase {
   private async handleMenu(from: string, session: Session) {
     // solo crea contacto si quieres guardarlo, pero NO tomamos su nombre
     if (!session.contactId) {
-      const contact = await this.contacts.findOrCreateByWaPhone(
-        from,
-        null,
-        TZ,
-      );
+      const contact = await this.contacts.findOrCreateByWaPhone(from, null, TZ);
       session.contactId = contact.id;
       session.contactPhone = contact.waPhone;
       await this.setSession(from, session);
@@ -148,7 +140,10 @@ export class HandleIncomingMessageUseCase {
         return this.cancel.confirm(waFrom, session, payload);
       }
       await this.sessions.del(waFrom);
-      await this.messenger.sendText(waFrom, 'Operación cancelada. Escribe "menu".');
+      await this.messenger.sendText(
+        waFrom,
+        'Operación cancelada. Escribe "menu".',
+      );
       return;
     }
 

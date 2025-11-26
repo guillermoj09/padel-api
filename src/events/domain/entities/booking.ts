@@ -7,6 +7,7 @@ export enum BookingStatus {
 
 export interface Booking {
   id: string;
+  title: string | null;
   userId: string | null;
   courtId: number;
   paymentId: string | null;
