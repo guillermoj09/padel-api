@@ -7,6 +7,7 @@ import {
   HttpStatus,
   UseGuards,
   Req,
+  Get,
 } from '@nestjs/common';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { RegisterUseCase } from '../../application/use-cases/register.use-case';
@@ -17,6 +18,7 @@ import { Response, Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { UsersWriterPort } from 'src/auth/domain/ports/users-writer.port';
 import { UsersReaderPort } from 'src/auth/domain/ports/users-reader.port';
+import { Roles } from 'src/auth/roles.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -26,7 +28,7 @@ export class AuthController {
     private readonly jwt: JwtService,
     private readonly usersWriter: UsersWriterPort,
     private readonly usersReader: UsersReaderPort,
-  ) {}
+  ) { }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -38,7 +40,7 @@ export class AuthController {
       email: dto.email,
       password: dto.password,
     });
-    console.log("Login" + access_token);
+    //console.log("Login" + access_token);
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('access_token', access_token, {
       httpOnly: true,
@@ -46,9 +48,16 @@ export class AuthController {
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });
-    console.log("Fallo");
 
     return { ok: true };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Roles('administrador')
+  @Get('me')
+  me(@Req() req: any) {
+    console.log("REQ USER:", JSON.stringify(req.user, null, 2));
+    return { user: req.user || null };
   }
 
   @UseGuards(AuthGuard('jwt'))

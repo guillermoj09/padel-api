@@ -127,9 +127,6 @@ export class TypeOrmBookingRepository implements BookingRepository {
     if (status) {
       // si me lo pasan, filtro exactamente por ese status
       where.status = status;
-    } else {
-      // si no me pasan nada, mantengo la lógica anterior
-      where.status = Not(BookingStatus.Cancelled);
     }
 
     const rows = await this.repo.find({

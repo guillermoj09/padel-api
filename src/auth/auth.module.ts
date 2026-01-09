@@ -4,7 +4,6 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 
 import { AuthController } from './interface/controllers/auth.controller';
-import { AdminController } from './interface/controllers/admin.controller';
 
 import { UsersReaderTypeorm } from './infrastructure/typeorm/users.reader.typeorm';
 import { UsersWriterTypeorm } from './infrastructure/typeorm/users.writer.typeorm'; // ⬅️ NUEVO
@@ -41,7 +40,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     }),
     TypeOrmModule.forFeature([User]),
   ],
-  controllers: [AuthController, AdminController],
+  controllers: [AuthController],
   providers: [
     // Use cases
     LoginUseCase,

@@ -8,9 +8,9 @@ import { CourtsPresenter } from '../presenters/courts.presenter';
 export class CourtsController {
   constructor(private readonly listCourts: ListCourtsUseCase) {}
 
-  // src/courts/interface/controllers/courts.controller.ts
   @Get()
   async list(@Query() q: GetCourtsQuery) {
+    console.log("entro a canchas");
     const active =
       typeof q.active === 'string' ? q.active === 'true' : q.active;
     const limitRaw = (q as any).limit;
