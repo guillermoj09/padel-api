@@ -1,8 +1,9 @@
 // src/events/application/use-cases/create-booking.use-case.ts
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { Booking, BookingStatus } from 'src/events/domain/entities/booking';
 import { BookingRepository } from '../../domain/repositories/booking.repository';
 import { CreateBookingDto } from '../dto/create-booking.dto';
+
 
 @Injectable()
 export class CreateBookingUseCase {
@@ -11,20 +12,38 @@ export class CreateBookingUseCase {
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<Booking> {
+    const start = new Date(dto.startTime);
+    const end = new Date(dto.endTime);
+
+    // (Opcional) sanity check
+    if (!(start instanceof Date) || isNaN(start.getTime())) {
+      throw new ConflictException('startTime inválido');
+    }
+    if (!(end instanceof Date) || isNaN(end.getTime()) || end <= start) {
+      throw new ConflictException('endTime inválido (debe ser mayor a startTime)');
+    }
+
+    // ✅ VALIDACIÓN: misma cancha + solapamiento + activa
+    const conflict = await this.repo.existsActiveOverlap(dto.courtId, start, end);
+    if (conflict) {
+      console.log("entro a conflict");
+      throw new ConflictException(
+        'Ya existe una reserva activa en ese día/horario para esa cancha.',
+      );
+    }
+
     const toCreate: Omit<Booking, 'id'> = {
       userId: dto.userId ?? null,
       courtId: dto.courtId,
       paymentId: dto.paymentId ?? null,
-      startTime: new Date(dto.startTime),
-      endTime: new Date(dto.endTime),
+      startTime: start,
+      endTime: end,
       date: dto.date,
       status: dto.status ?? BookingStatus.Confirmed,
       contactId: dto.contactId ?? undefined,
       title: dto.title ?? null,
-      // createdAt/updatedAt si no los agrega la DB:
-      // createdAt: new Date(), updatedAt: new Date(),
     };
-    console.log(toCreate);
+
     return this.repo.create(toCreate);
   }
 }

@@ -15,7 +15,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
     @InjectRepository(BookingSchema)
     private readonly repo: Repository<BookingSchema>,
     private readonly bookingMapper: BookingMapper,
-  ) {}
+  ) { }
   async findWaPhoneByBookingId(id: string | number): Promise<string | null> {
     const row = await this.repo
       .createQueryBuilder('b')
@@ -123,7 +123,6 @@ export class TypeOrmBookingRepository implements BookingRepository {
       start_time: LessThan(end),
       end_time: MoreThan(start),
     };
-    console.log("repository");
     if (status) {
       // si me lo pasan, filtro exactamente por ese status
       where.status = status;
@@ -133,12 +132,30 @@ export class TypeOrmBookingRepository implements BookingRepository {
       where,
       relations: { user: true, court: true, payment: true },
     });
-    console.log("rows" +rows);
+    console.log("rows" + rows);
     return rows.map((b) => this.toDomain(b));
+  }
+  async existsActiveOverlap(
+    courtId: number,
+    start: Date,
+    end: Date,
+  ): Promise<boolean> {
+    const count = await this.repo.count({
+      where: {
+        court: { id: courtId },
+        // solapamiento: empieza antes de que termine el otro y termina después de que empiece
+        start_time: LessThan(end),
+        end_time: MoreThan(start),
+        // "activa"
+        status: Not(BookingStatus.Cancelled),
+      },
+    });
+
+    return count > 0;
   }
 
   async create(booking: CreateBookingInput): Promise<Booking> {
-    console.log(`entro ${booking.title}`);
+    console.log(`entro create orm ${booking.title}`);
 
     const payload: DeepPartial<BookingSchema> = {
       // relaciones: asigna solo si hay id, si no pon null

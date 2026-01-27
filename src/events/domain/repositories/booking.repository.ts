@@ -25,6 +25,13 @@ export interface BookingRepository {
     to: Date,
     status?: BookingStatus,
   );
+
+  existsActiveOverlap(
+    courtId: number,
+    start: Date,
+    end: Date,
+  ): Promise<boolean>;
+
 }
 
 export const BOOKING_REPOSITORY = Symbol('BOOKING_REPOSITORY');
