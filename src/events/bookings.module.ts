@@ -11,9 +11,13 @@ import { ContactsRepositoryTypeorm } from './infrastructure/typeorm/contacts.rep
 import { ContactSchema } from './infrastructure/typeorm/entities/contact.schema';
 import { CancelBookingUseCase } from './application/use-cases/cancel-booking.use-case';
 import { GetCourtReservationsByDateRangeAndStatus } from './application/use-cases/get-bookings-by-court-by-range-and-state';
+import { CourtPricingRepositoryTypeorm } from './infrastructure/typeorm/court-pricing.repository.typeorm';
+import { Court } from './infrastructure/typeorm/entities/court.schema';
+import { CourtDailyRateSchema } from 'src/courts/infrastructure/typeorm/entities/court-daily-rate.schema';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BookingSchema, ContactSchema])],
+  imports: [TypeOrmModule.forFeature([BookingSchema, ContactSchema,Court,                // ✅ ESTE FALTABA
+    CourtDailyRateSchema ])],
   controllers: [BookingController],
   providers: [
     BookingMapper,
@@ -29,6 +33,8 @@ import { GetCourtReservationsByDateRangeAndStatus } from './application/use-case
     },
     ContactsRepositoryTypeorm,
     { provide: 'ContactsRepository', useExisting: ContactsRepositoryTypeorm },
+    CourtPricingRepositoryTypeorm,
+    { provide: 'CourtPricingRepository', useClass: CourtPricingRepositoryTypeorm },
   ],
   exports: [
     'BookingRepository',

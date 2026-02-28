@@ -94,4 +94,19 @@ export class BookingSchema {
 
   @Column({ type: 'varchar', nullable: true, name: 'canceled_by' })
   canceledBy?: string | number | null;
+
+  @Column({ type: 'int', name: 'price_applied', nullable: true })
+  priceApplied?: number | null;
+
+  @Column({ type: 'varchar', length: 8, name: 'currency_applied', nullable: true })
+  currencyApplied?: string | null;
+
+  @Column({ type: 'varchar', length: 4, name: 'slot_applied', nullable: true })
+  slotApplied?: 'AM' | 'PM' | null;
+
+  @Column({ type: 'varchar', length: 20, name: 'pricing_source', nullable: true })
+  pricingSource?: 'DAILY' | 'RATE_CARD' | null;
+
+  @Column({ type: 'varchar', length: 10, name: 'cutoff_applied', nullable: true })
+  cutoffApplied?: string | null;
 }

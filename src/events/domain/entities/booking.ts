@@ -21,4 +21,9 @@ export interface Booking {
   canceledAt?: Date | null;
   cancelReason?: string | null;
   canceledBy?: number | string | null;
+  priceApplied?: number | null;          // precio total por reserva
+  currencyApplied?: string | null;
+  slotApplied?: 'AM' | 'PM' | null;
+  pricingSource?: 'DAILY' | 'RATE_CARD' | null;
+  cutoffApplied?: string | null;
 }

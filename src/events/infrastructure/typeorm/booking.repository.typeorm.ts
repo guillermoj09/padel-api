@@ -173,6 +173,12 @@ export class TypeOrmBookingRepository implements BookingRepository {
       end_time: booking.endTime, // Date (timestamptz)
       status: booking.status,
       date: booking.date, // Date (tu schema lo tipa como Date)
+
+      priceApplied: booking.priceApplied ?? null,
+      currencyApplied: booking.currencyApplied ?? null,
+      slotApplied: booking.slotApplied ?? null,
+      pricingSource: booking.pricingSource ?? null,
+      cutoffApplied: booking.cutoffApplied ?? null,
     };
 
     const entity = this.repo.create(payload as DeepPartial<BookingSchema>);
@@ -205,6 +211,13 @@ export class TypeOrmBookingRepository implements BookingRepository {
       canceledAt: (schema as any).canceledAt ?? undefined,
       cancelReason: (schema as any).cancelReason ?? undefined,
       canceledBy: (schema as any).canceledBy ?? undefined,
+      // ✅ NUEVO
+      priceApplied: schema.priceApplied ?? null,
+      currencyApplied: schema.currencyApplied ?? null,
+      slotApplied: schema.slotApplied ?? null,
+      pricingSource: schema.pricingSource ?? null,
+      cutoffApplied: schema.cutoffApplied ?? null,
+
     };
   }
 }
