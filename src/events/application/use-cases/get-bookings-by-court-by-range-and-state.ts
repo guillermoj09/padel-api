@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { BookingRepository } from '../../domain/repositories/booking.repository';
-import { BookingStatus } from 'src/events/domain/entities/booking';
+import { BookingFilterStatus } from 'src/events/domain/entities/booking';
 
 @Injectable()
 export class GetCourtReservationsByDateRangeAndStatus {
@@ -9,13 +9,17 @@ export class GetCourtReservationsByDateRangeAndStatus {
     private readonly bookingRepository: BookingRepository,
   ) {}
 
-  async execute(courtId: string,status: BookingStatus | undefined, from: Date, to: Date) {
-    console.log("status "+ status);
-    return this.bookingRepository.findByCourtAndDateRangeAndStatus(
+  async execute(
+    courtId: string,
+    filter: BookingFilterStatus | undefined,
+    from: Date,
+    to: Date,
+  ) {
+    return this.bookingRepository.findByCourtAndDateRangeAndFilter(
       courtId,
       from,
       to,
-      status,
+      filter,
     );
   }
 }

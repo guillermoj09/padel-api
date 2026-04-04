@@ -28,7 +28,7 @@ export class AuthController {
     private readonly jwt: JwtService,
     private readonly usersWriter: UsersWriterPort,
     private readonly usersReader: UsersReaderPort,
-  ) { }
+  ) {}
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -40,11 +40,12 @@ export class AuthController {
       email: dto.email,
       password: dto.password,
     });
-    //console.log("Login" + access_token);
+
     const isProd = process.env.NODE_ENV === 'production';
+
     res.cookie('access_token', access_token, {
       httpOnly: true,
-      secure: false,
+      secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });
@@ -56,7 +57,7 @@ export class AuthController {
   @Roles('administrador')
   @Get('me')
   me(@Req() req: any) {
-    console.log("REQ USER:", JSON.stringify(req.user, null, 2));
+    console.log('REQ USER:', JSON.stringify(req.user, null, 2));
     return { user: req.user || null };
   }
 
@@ -70,9 +71,10 @@ export class AuthController {
     }
 
     const isProd = process.env.NODE_ENV === 'production';
+
     res.clearCookie('access_token', {
       httpOnly: true,
-      secure: false,
+      secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });

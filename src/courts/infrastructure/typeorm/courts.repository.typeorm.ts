@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository } from 'typeorm';
 
 import {
   CourtsRepository,
@@ -19,13 +19,21 @@ export class CourtsRepositoryTypeorm implements CourtsRepository {
   async list(params: ListCourtsParams): Promise<Court[]> {
     const qb = this.repo
       .createQueryBuilder('c')
-      .select(['c.id', 'c.name', 'c.active'])
+      .select([
+        'c.id',
+        'c.type',
+        'c.name',
+        'c.active',
+        'c.defaultAmPrice',
+        'c.defaultPmPrice',
+        'c.currency',
+        'c.priceCutoff',
+      ])
       .orderBy('c.id', 'ASC');
 
     if (typeof params.active === 'boolean') {
       qb.andWhere('c.active = :active', { active: params.active });
     }
-    // import { Repository } from 'typeorm';  // ya no necesitas Brackets si no lo usas
 
     if (params.q && params.q.trim()) {
       const q = params.q.trim();
@@ -35,13 +43,37 @@ export class CourtsRepositoryTypeorm implements CourtsRepository {
     qb.take(params.limit ?? 10);
 
     const rows = await qb.getMany();
-    return rows.map((r) => new Court(r.id, r.name, r.active));
+    return rows.map(
+      (r) =>
+        new Court(
+          r.id,
+          r.type,
+          r.name,
+          r.active,
+          r.defaultAmPrice,
+          r.defaultPmPrice,
+          r.currency,
+          r.priceCutoff ?? null,
+        ),
+    );
   }
 
   async getById(id: number | string): Promise<Court | null> {
     const numId = Number(id);
     const row = await this.repo.findOne({ where: { id: numId } });
-    return row ? new Court(row.id, row.name, row.active) : null;
+
+    return row
+      ? new Court(
+          row.id,
+          row.type,
+          row.name,
+          row.active,
+          row.defaultAmPrice,
+          row.defaultPmPrice,
+          row.currency,
+          row.priceCutoff ?? null,
+        )
+      : null;
   }
 
   async exists(id: number | string): Promise<boolean> {

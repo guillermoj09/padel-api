@@ -10,7 +10,7 @@ export class CourtsController {
 
   @Get()
   async list(@Query() q: GetCourtsQuery) {
-    console.log("entro a canchas");
+    console.log('entro a canchas 1');
     const active =
       typeof q.active === 'string' ? q.active === 'true' : q.active;
     const limitRaw = (q as any).limit;
@@ -20,6 +20,7 @@ export class CourtsController {
 
     const query = new ListCourtsQuery({ q: q.q, active, limit }); // <-- ahora sí
     const result = await this.listCourts.execute(query);
+
     return CourtsPresenter.toHttpList(result);
   }
 }

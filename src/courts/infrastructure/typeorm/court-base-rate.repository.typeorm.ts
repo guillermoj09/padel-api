@@ -16,7 +16,9 @@ export class CourtBaseRateRepositoryTypeorm implements CourtBaseRateRepository {
     private readonly repo: Repository<CourtBaseRateHistorySchema>,
   ) {}
 
-  async changeBaseRate(params: ChangeBaseRateParams): Promise<BaseRateAtResult> {
+  async changeBaseRate(
+    params: ChangeBaseRateParams,
+  ): Promise<BaseRateAtResult> {
     const now = new Date();
 
     return this.dataSource.transaction(async (manager) => {
@@ -60,12 +62,17 @@ export class CourtBaseRateRepositoryTypeorm implements CourtBaseRateRepository {
     });
   }
 
-  async getBaseRateAt(courtId: number, at: Date): Promise<BaseRateAtResult | null> {
+  async getBaseRateAt(
+    courtId: number,
+    at: Date,
+  ): Promise<BaseRateAtResult | null> {
     const row = await this.repo
       .createQueryBuilder('r')
       .where('r.courtId = :courtId', { courtId })
       .andWhere('r.effectiveFrom <= :d', { d: at.toISOString() })
-      .andWhere('(r.effectiveTo IS NULL OR r.effectiveTo > :d)', { d: at.toISOString() })
+      .andWhere('(r.effectiveTo IS NULL OR r.effectiveTo > :d)', {
+        d: at.toISOString(),
+      })
       .orderBy('r.effectiveFrom', 'DESC')
       .getOne();
 

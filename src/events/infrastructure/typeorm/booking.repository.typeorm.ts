@@ -3,11 +3,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Repository, Not, LessThan, MoreThan } from 'typeorm';
 import { BookingRepository } from '../../domain/repositories/booking.repository';
 import type { Booking } from '../../domain/entities/booking';
-import { BookingStatus } from '../../domain/entities/booking';
+import {
+  BookingFilterStatus,
+  BookingStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../../domain/entities/booking';
 import { BookingSchema } from './entities/booking.schema';
 import { BookingMapper } from './mappers/booking.mapper';
 
-type CreateBookingInput = Omit<Booking, 'id'>; // tu modelo actual: userId puede ser null, date es Date
+type CreateBookingInput = Omit<Booking, 'id'>;
 
 @Injectable()
 export class TypeOrmBookingRepository implements BookingRepository {
@@ -15,7 +20,8 @@ export class TypeOrmBookingRepository implements BookingRepository {
     @InjectRepository(BookingSchema)
     private readonly repo: Repository<BookingSchema>,
     private readonly bookingMapper: BookingMapper,
-  ) { }
+  ) {}
+
   async findWaPhoneByBookingId(id: string | number): Promise<string | null> {
     const row = await this.repo
       .createQueryBuilder('b')
@@ -36,7 +42,67 @@ export class TypeOrmBookingRepository implements BookingRepository {
     return e ? this.bookingMapper.toDomain(e) : null;
   }
 
-  // ejemplo dentro de tu repo TypeORM
+  async updatePaymentMethod(
+    id: string,
+    paymentMethod: PaymentMethod,
+  ): Promise<Booking> {
+    const booking = await this.repo.findOne({
+      where: { id: String(id) },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    booking.paymentMethod = paymentMethod;
+    await this.repo.save(booking);
+
+    const reloaded = await this.repo.findOne({
+      where: { id: String(id) },
+      relations: { user: true, court: true, payment: true, contact: true },
+    });
+
+    if (!reloaded) {
+      throw new NotFoundException('Booking not found after update');
+    }
+
+    return this.bookingMapper.toDomain(reloaded);
+  }
+
+  async confirmPayment(
+    id: string,
+    input: {
+      paymentMethod: PaymentMethod;
+      confirmedBy: string;
+    },
+  ): Promise<Booking> {
+    const booking = await this.repo.findOne({
+      where: { id: String(id) },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    booking.paymentMethod = input.paymentMethod;
+    booking.paymentStatus = PaymentStatus.Paid;
+    booking.paidAt = new Date();
+    booking.paymentConfirmedBy = input.confirmedBy;
+
+    await this.repo.save(booking);
+
+    const reloaded = await this.repo.findOne({
+      where: { id: String(id) },
+      relations: { user: true, court: true, payment: true, contact: true },
+    });
+
+    if (!reloaded) {
+      throw new NotFoundException('Booking not found after payment confirmation');
+    }
+
+    return this.bookingMapper.toDomain(reloaded);
+  }
+
   async cancel(
     id: string | number,
     info: { reason?: string | null; by?: string | number | null },
@@ -46,7 +112,6 @@ export class TypeOrmBookingRepository implements BookingRepository {
 
       const b = await r.findOne({ where: { id: String(id) } });
       if (!b) {
-        // La interfaz exige Promise<Booking>, no puede ser null → lanza error
         throw new Error('Booking not found in cancel');
       }
 
@@ -65,7 +130,6 @@ export class TypeOrmBookingRepository implements BookingRepository {
         throw new Error('Booking disappeared after cancel');
       }
 
-      // 👇 Devuelve dominio, no schema
       return this.bookingMapper.toDomain(reloaded);
     });
   }
@@ -79,7 +143,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
         court: { id: Number(courtId) },
         start_time: start,
       },
-      select: { id: true }, // más eficiente
+      select: { id: true },
     });
     return !!found;
   }
@@ -99,42 +163,67 @@ export class TypeOrmBookingRepository implements BookingRepository {
     const rows = await this.repo.find({
       where: {
         court: { id: Number(courtId) },
-        // solapamiento básico: empieza antes de que termine el rango y termina después de que empiece
         start_time: LessThan(end),
         end_time: MoreThan(start),
         status: Not(BookingStatus.Cancelled),
       },
-      relations: { user: true, court: true, payment: true },
+      relations: { user: true, court: true, payment: true, contact: true },
     });
-
-    // ✅ nada de `new Booking(...)`, usa el mapper o un objeto literal
     return rows.map((b) => this.toDomain(b));
   }
 
-  async findByCourtAndDateRangeAndStatus(
+  async findByCourtAndDateRangeAndFilter(
     courtId: string,
     start: Date,
     end: Date,
-    status?: BookingStatus, // 👈 nuevo parámetro (opcional)
+    filter?: BookingFilterStatus,
   ): Promise<Booking[]> {
-    const where: any = {
-      court: { id: Number(courtId) },
-      // solapamiento básico: empieza antes de que termine el rango y termina después de que empiece
-      start_time: LessThan(end),
-      end_time: MoreThan(start),
-    };
-    if (status) {
-      // si me lo pasan, filtro exactamente por ese status
-      where.status = status;
+    const qb = this.repo
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.user', 'user')
+      .leftJoinAndSelect('booking.court', 'court')
+      .leftJoinAndSelect('booking.payment', 'payment')
+      .leftJoinAndSelect('booking.contact', 'contact')
+      .where('court.id = :courtId', { courtId: Number(courtId) })
+      .andWhere('booking.start_time < :end', { end })
+      .andWhere('booking.end_time > :start', { start });
+
+    if (filter === BookingFilterStatus.Pending) {
+      qb.andWhere('booking.status = :pendingStatus', {
+        pendingStatus: BookingStatus.Pending,
+      });
     }
 
-    const rows = await this.repo.find({
-      where,
-      relations: { user: true, court: true, payment: true },
-    });
-    console.log("rows" + rows);
+    if (filter === BookingFilterStatus.Confirmed) {
+      qb
+        .andWhere('booking.status = :confirmedStatus', {
+          confirmedStatus: BookingStatus.Confirmed,
+        })
+        .andWhere('booking.paymentStatus != :paidStatus', {
+          paidStatus: PaymentStatus.Paid,
+        });
+    }
+
+    if (filter === BookingFilterStatus.Cancelled) {
+      qb.andWhere('booking.status = :cancelledStatus', {
+        cancelledStatus: BookingStatus.Cancelled,
+      });
+    }
+
+    if (filter === BookingFilterStatus.Paid) {
+      qb
+        .andWhere('booking.paymentStatus = :paidStatus', {
+          paidStatus: PaymentStatus.Paid,
+        })
+        .andWhere('booking.status != :cancelledStatus', {
+          cancelledStatus: BookingStatus.Cancelled,
+        });
+    }
+
+    const rows = await qb.getMany();
     return rows.map((b) => this.toDomain(b));
   }
+
   async existsActiveOverlap(
     courtId: number,
     start: Date,
@@ -143,10 +232,8 @@ export class TypeOrmBookingRepository implements BookingRepository {
     const count = await this.repo.count({
       where: {
         court: { id: courtId },
-        // solapamiento: empieza antes de que termine el otro y termina después de que empiece
         start_time: LessThan(end),
         end_time: MoreThan(start),
-        // "activa"
         status: Not(BookingStatus.Cancelled),
       },
     });
@@ -155,10 +242,11 @@ export class TypeOrmBookingRepository implements BookingRepository {
   }
 
   async create(booking: CreateBookingInput): Promise<Booking> {
-    console.log(`entro create orm ${booking.title}`);
-
     const payload: DeepPartial<BookingSchema> = {
-      // relaciones: asigna solo si hay id, si no pon null
+      paymentMethod: booking.paymentMethod ?? PaymentMethod.Pendiente,
+      paymentStatus: booking.paymentStatus ?? PaymentStatus.Pending,
+      paidAt: booking.paidAt ?? null,
+      paymentConfirmedBy: booking.paymentConfirmedBy ?? null,
       user: booking.userId ? ({ id: booking.userId as string } as any) : null,
       contact: booking.contactId
         ? ({ id: booking.contactId as string } as any)
@@ -168,12 +256,10 @@ export class TypeOrmBookingRepository implements BookingRepository {
         ? ({ id: booking.paymentId as string } as any)
         : null,
       title: booking.title,
-      // columnas (ojo con los nombres en snake_case)
-      start_time: booking.startTime, // Date (timestamptz)
-      end_time: booking.endTime, // Date (timestamptz)
+      start_time: booking.startTime,
+      end_time: booking.endTime,
       status: booking.status,
-      date: booking.date, // Date (tu schema lo tipa como Date)
-
+      date: booking.date,
       priceApplied: booking.priceApplied ?? null,
       currencyApplied: booking.currencyApplied ?? null,
       slotApplied: booking.slotApplied ?? null,
@@ -182,7 +268,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
     };
 
     const entity = this.repo.create(payload as DeepPartial<BookingSchema>);
-    const saved = await this.repo.save(entity); // ← ahora es BookingSchema, no array
+    const saved = await this.repo.save(entity);
 
     const full = await this.repo.findOne({
       where: { id: saved.id },
@@ -197,27 +283,30 @@ export class TypeOrmBookingRepository implements BookingRepository {
   private toDomain(schema: BookingSchema): Booking {
     return {
       id: schema.id,
-      userId: schema.userId ?? schema.user?.id ?? null, // si aquí tu tipo NO acepta null, cámbialo a undefined también
+      userId: schema.userId ?? schema.user?.id ?? null,
       courtId: Number(schema.courtId ?? schema.court?.id),
-      paymentId: schema.paymentId ?? schema.payment?.id ?? null, // idem observación
+      paymentId: schema.paymentId ?? schema.payment?.id ?? null,
+      paymentMethod: schema.paymentMethod ?? PaymentMethod.Pendiente,
+      paymentStatus: schema.paymentStatus ?? PaymentStatus.Pending,
+      paidAt: schema.paidAt ?? null,
+      paymentConfirmedBy: schema.paymentConfirmedBy ?? null,
       startTime: schema.start_time,
       endTime: schema.end_time,
       status: schema.status,
       date: schema.date,
       title: schema.title ?? null,
-      contactId: schema.contactId ?? schema.contact?.id ?? undefined, // 👈 antes era null
+      phoneNumber: schema.contact?.waPhone,
+      contactId: schema.contactId ?? schema.contact?.id ?? undefined,
       createdAt: (schema as any).createdAt ?? undefined,
       updatedAt: (schema as any).updatedAt ?? undefined,
       canceledAt: (schema as any).canceledAt ?? undefined,
       cancelReason: (schema as any).cancelReason ?? undefined,
       canceledBy: (schema as any).canceledBy ?? undefined,
-      // ✅ NUEVO
       priceApplied: schema.priceApplied ?? null,
       currencyApplied: schema.currencyApplied ?? null,
       slotApplied: schema.slotApplied ?? null,
       pricingSource: schema.pricingSource ?? null,
       cutoffApplied: schema.cutoffApplied ?? null,
-
     };
   }
 }

@@ -22,8 +22,14 @@ import { nowYMD } from '../utils/date';
 import { CancelBookingDto } from 'src/events/application/dto/cancel-booking-input';
 import { CancelBookingUseCase } from '../../application/use-cases/cancel-booking.use-case';
 import { GetCourtReservationsByDateRangeAndStatus } from '../../application/use-cases/get-bookings-by-court-by-range-and-state';
-import { Booking, BookingStatus } from 'src/events/domain/entities/booking';
-import { title } from 'process';
+import {
+  Booking,
+  BookingFilterStatus,
+  BookingStatus,
+  PaymentMethod,
+} from 'src/events/domain/entities/booking';
+import { ConfirmBookingPaymentDto } from '../dto/confirm-booking-payment.dto';
+import { ConfirmBookingPaymentUseCase } from '../../application/use-cases/confirm-booking-payment.use-case';
 
 @Controller('bookings')
 export class BookingController {
@@ -32,7 +38,9 @@ export class BookingController {
     private readonly getBookingsByCourtUseCase: GetBookingsByCourtUseCase,
     private readonly cancelBooking: CancelBookingUseCase,
     private readonly getCourtReservationsByDateRangeAndStatus: GetCourtReservationsByDateRangeAndStatus,
+    private readonly confirmBookingPaymentUseCase: ConfirmBookingPaymentUseCase,
   ) {}
+
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('administrador')
   @Get('court/:courtId/events')
@@ -41,7 +49,11 @@ export class BookingController {
     @Query('start') start: Date,
     @Query('end') end: Date,
   ) {
-    const data = this.getBookingsByCourtUseCase.execute(courtId, start, end);
+    const data = await this.getBookingsByCourtUseCase.execute(
+      courtId,
+      start,
+      end,
+    );
     return data;
   }
 
@@ -49,7 +61,6 @@ export class BookingController {
   @Roles('administrador')
   @Get('me')
   me(@Req() req: any) {
-    console.log(`hola ${process.env.JWT_SECRET}`);
     return { user: req.user || null };
   }
 
@@ -57,38 +68,57 @@ export class BookingController {
   @Post()
   async createBooking(
     @Body() dto: CreateBookingDto,
-    @Req() req: Request & { user?: any }, // 👈 recibe req
+    @Req() req: Request & { user?: any },
   ) {
-    console.log('entro 1');
-    const userId = req.user?.id as string | undefined; // viene de JwtStrategy.validate()
+    const userId = req.user?.id as string | undefined;
     if (!userId) throw new UnauthorizedException('Sin usuario');
-    console.log(`entro ${dto.title} `);
+
     const bookingInput = {
       userId,
       courtId: dto.courtId,
-      paymentId: null,
-      startTime: new Date(dto.startTime),
-      endTime: new Date(dto.endTime),
+      paymentId: dto.paymentId ?? null,
+      paymentMethod: dto.paymentMethod ?? PaymentMethod.Pendiente,
+      startTime: dto.startTime,
+      endTime: dto.endTime,
       status: dto.status as BookingStatus,
       title: dto.title,
+      contactId: dto.contactId ?? null,
       date: nowYMD(),
     };
 
     return this.createBookingUseCase.execute(bookingInput);
   }
+
   @UseGuards(AuthGuard('jwt'))
   @Patch(':id/cancel')
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  // @ApiOkResponse({ description: 'Booking cancelado', type: BookingSwaggerModel })
   async cancelBookingById(
     @Param('id') id: string,
     @Body() dto: CancelBookingDto,
     @Req() req: Request & { user?: any },
   ): Promise<Booking> {
-    const userId = req.user?.id as string | undefined; // viene de JwtStrategy.validate()
+    const userId = req.user?.id as string | undefined;
     if (!userId) throw new UnauthorizedException('Sin usuario');
+
     dto.by = `admin:${userId}`;
     return this.cancelBooking.execute(id, dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch(':id/confirm-payment')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async confirmPayment(
+    @Param('id') id: string,
+    @Body() dto: ConfirmBookingPaymentDto,
+    @Req() req: Request & { user?: any },
+  ): Promise<Booking> {
+    const userId = req.user?.id as string | undefined;
+    if (!userId) throw new UnauthorizedException('Sin usuario');
+
+    return this.confirmBookingPaymentUseCase.execute(id, {
+      paymentMethod: dto.paymentMethod,
+      confirmedBy: userId,
+    });
   }
 
   @Get('court/:courtId')
@@ -96,16 +126,14 @@ export class BookingController {
     @Param('courtId') courtId: string,
     @Query('from') from: Date,
     @Query('to') to: Date,
-    @Query('status') status: BookingStatus,
+    @Query('filter') filter?: BookingFilterStatus,
+    @Query('status') legacyStatus?: BookingFilterStatus,
   ) {
-    // Mapear string de la query a BookingStatus (o undefined si es inválido)
-    let bookingStatus: BookingStatus | undefined = undefined;
-    //console.log(status);
+    const appliedFilter = filter ?? legacyStatus;
 
-    console.log("bookingStatus "+status)
     return this.getCourtReservationsByDateRangeAndStatus.execute(
       courtId,
-      status,
+      appliedFilter,
       from,
       to,
     );

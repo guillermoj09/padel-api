@@ -24,9 +24,17 @@ export class CourtDailyRateSchema {
   @Column({ name: 'set_by_admin_id', type: 'varchar', nullable: true })
   setByAdminId?: string | null;
 
-  @Column({ type: 'timestamptz', name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    type: 'timestamptz',
+    name: 'created_at',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   createdAt!: Date;
 
-  @Column({ type: 'timestamptz', name: 'updated_at', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    type: 'timestamptz',
+    name: 'updated_at',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   updatedAt!: Date;
 }

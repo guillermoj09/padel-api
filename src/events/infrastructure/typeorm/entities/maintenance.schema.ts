@@ -5,16 +5,16 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { Court } from './court.schema'; // Asegúrate de importar Court
+import { CourtSchema } from 'src/courts/infrastructure/typeorm/entities/court.schema';
 
 @Entity('maintenance')
 export class Maintenance {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => Court, (court) => court.maintenance)
+  @ManyToOne(() => CourtSchema, (court) => court.maintenance)
   @JoinColumn({ name: 'court_id' }) // Relación ManyToOne con Court, clave foránea 'court_id'
-  court: Court;
+  court: CourtSchema;
 
   @Column('timestamptz')
   start_date: Date;

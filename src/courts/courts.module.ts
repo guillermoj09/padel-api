@@ -16,7 +16,11 @@ import { CourtsReaderService } from './application/services/courts-reader.servic
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CourtSchema, CourtDailyRateSchema, CourtBaseRateHistorySchema]),
+    TypeOrmModule.forFeature([
+      CourtSchema,
+      CourtDailyRateSchema,
+      CourtBaseRateHistorySchema,
+    ]),
   ],
   controllers: [CourtsController, CourtBaseRateController],
   providers: [
@@ -28,14 +32,20 @@ import { CourtsReaderService } from './application/services/courts-reader.servic
     { provide: 'CourtsRepository', useClass: CourtsRepositoryTypeorm },
 
     CourtBaseRateRepositoryTypeorm,
-    { provide: 'CourtBaseRateRepository', useClass: CourtBaseRateRepositoryTypeorm },
+    {
+      provide: 'CourtBaseRateRepository',
+      useClass: CourtBaseRateRepositoryTypeorm,
+    },
 
-    { provide: COURTS_READER, useClass: CourtsReaderService },
+    CourtsReaderService,
+    { provide: COURTS_READER, useExisting: CourtsReaderService },
   ],
   exports: [
-    { provide: 'CourtsRepository', useClass: CourtsRepositoryTypeorm },
-    { provide: 'CourtBaseRateRepository', useClass: CourtBaseRateRepositoryTypeorm },
-    { provide: COURTS_READER, useClass: CourtsReaderService },
+    'CourtsRepository',
+    'CourtBaseRateRepository',
+    COURTS_READER,
+    ListCourtsUseCase,
+    CourtsReaderService,
   ],
 })
 export class CourtsModule {}

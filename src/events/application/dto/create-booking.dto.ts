@@ -1,23 +1,47 @@
 // src/events/application/dto/create-booking.dto.ts
-import { Type } from 'class-transformer';
 import {
-  IsDate,
-  IsEnum,
-  IsNumber,
+  IsISO8601,
   IsOptional,
+  IsEnum,
   IsString,
+  IsNumber,
 } from 'class-validator';
-import { BookingStatus } from '../../domain/entities/booking';
+import { BookingStatus, PaymentMethod } from '../../domain/entities/booking';
 
 export class CreateBookingDto {
-  @IsOptional() @IsString() userId?: string | null;
-  @IsNumber() courtId!: number;
-  @IsOptional() @IsString() paymentId?: string | null;
-  @IsString() title?: string | null;
-  @Type(() => Date) @IsDate() startTime!: Date; // ← Date
-  @Type(() => Date) @IsDate() endTime!: Date; // ← Date
+  @IsOptional()
+  @IsString()
+  userId?: string | null;
 
-  @IsOptional() @IsEnum(BookingStatus) status?: BookingStatus;
-  @IsString() date!: string;
-  @IsOptional() @IsString() contactId?: string | null;
+  @IsNumber()
+  courtId!: number;
+
+  @IsOptional()
+  @IsString()
+  paymentId?: string | null;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
+
+  @IsISO8601()
+  startTime!: string;
+
+  @IsISO8601()
+  endTime!: string;
+
+  @IsString()
+  title: string | null;
+
+  @IsOptional()
+  @IsEnum(BookingStatus)
+  status?: BookingStatus;
+
+  @IsOptional()
+  @IsISO8601()
+  date!: string;
+
+  @IsOptional()
+  @IsString()
+  contactId?: string | null;
 }

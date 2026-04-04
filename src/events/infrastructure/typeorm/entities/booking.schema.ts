@@ -8,10 +8,14 @@ import {
   RelationId,
 } from 'typeorm';
 import { User } from '../../../../auth/infrastructure/typeorm/entities/user.schema';
-import { Court } from './court.schema';
+import { CourtSchema } from 'src/courts/infrastructure/typeorm/entities/court.schema';
 import { Payment } from './payment.schema';
 import { ContactSchema } from './contact.schema';
-import { BookingStatus } from 'src/events/domain/entities/booking';
+import {
+  BookingStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from 'src/events/domain/entities/booking';
 
 @Entity('bookings')
 export class BookingSchema {
@@ -21,7 +25,6 @@ export class BookingSchema {
   @Column({ type: 'varchar', length: 150, nullable: true })
   title?: string | null;
 
-  // Relaciones
   @ManyToOne(() => User, (user) => user.bookings)
   @JoinColumn({ name: 'user_id' })
   user: User | null;
@@ -29,9 +32,9 @@ export class BookingSchema {
   @RelationId((booking: BookingSchema) => booking.user)
   userId: string | null;
 
-  @ManyToOne(() => Court, (court) => court.bookings)
+  @ManyToOne(() => CourtSchema, (court) => court.bookings)
   @JoinColumn({ name: 'court_id' })
-  court: Court;
+  court: CourtSchema;
 
   @RelationId((booking: BookingSchema) => booking.court)
   courtId: number;
@@ -43,6 +46,37 @@ export class BookingSchema {
   @RelationId((booking: BookingSchema) => booking.payment)
   paymentId: string | null;
 
+  @Column({
+    type: 'varchar',
+    length: 20,
+    name: 'payment_method',
+    default: PaymentMethod.Pendiente,
+  })
+  paymentMethod: PaymentMethod;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    name: 'payment_status',
+    default: PaymentStatus.Pending,
+  })
+  paymentStatus: PaymentStatus;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    name: 'paid_at',
+  })
+  paidAt?: Date | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    name: 'payment_confirmed_by',
+  })
+  paymentConfirmedBy?: string | null;
+
   @ManyToOne(() => ContactSchema, (c) => c.bookings, { nullable: true })
   @JoinColumn({ name: 'contact_id' })
   contact: ContactSchema | null;
@@ -50,7 +84,6 @@ export class BookingSchema {
   @RelationId((b: BookingSchema) => b.contact)
   contactId: string | null;
 
-  // Otros campos
   @Column('timestamptz')
   start_time: Date;
 
@@ -62,13 +95,14 @@ export class BookingSchema {
     enum: BookingStatus,
     enumName: 'booking_status',
     name: 'status',
-    default: BookingStatus.Pending, // 👈 default en DB
-    nullable: false, // 👈 explícito (por claridad)
+    default: BookingStatus.Pending,
+    nullable: false,
   })
   status: BookingStatus;
 
   @Column('date')
   date: string;
+
   @Column({
     type: 'timestamptz',
     nullable: true,
@@ -85,7 +119,6 @@ export class BookingSchema {
   })
   updatedAt?: Date;
 
-  // 👇 estos 3 son los que faltan si quieres guardar la cancelación
   @Column({ type: 'timestamptz', nullable: true, name: 'canceled_at' })
   canceledAt?: Date | null;
 

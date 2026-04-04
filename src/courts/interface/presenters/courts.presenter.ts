@@ -5,6 +5,7 @@ export class CourtsPresenter {
     return {
       id: String(dto.id),
       title: dto.name ?? `Cancha ${dto.id}`,
+      type: String(dto.type),
       // active: dto.active,
     };
   }
