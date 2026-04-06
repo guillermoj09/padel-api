@@ -20,7 +20,11 @@ async function bootstrap() {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   app.enableCors({
-    origin: [frontendUrl],
+    origin: [
+      frontendUrl,
+      'https://profejoshua.cl',
+      'https://www.profejoshua.cl',
+    ],
     credentials: true,
   });
 
