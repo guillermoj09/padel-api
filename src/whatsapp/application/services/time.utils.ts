@@ -1,6 +1,29 @@
 // time.utils.ts
 export const TZ = 'America/Santiago';
 
+function getLocalParts(date: Date, timeZone = TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+  }).formatToParts(date);
+
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+
+  return {
+    year: String(map.year ?? '0000'),
+    month: String(map.month ?? '01'),
+    day: String(map.day ?? '01'),
+    hour: String(map.hour ?? '00').padStart(2, '0'),
+    minute: String(map.minute ?? '00').padStart(2, '0'),
+  };
+}
+
 // -------------------- Helpers de fecha --------------------
 export function formatYMD(d: Date) {
   const y = d.getFullYear();
@@ -40,27 +63,21 @@ export function isValidHHmm(s: string): boolean {
 }
 
 export function localTodayYMD(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
+  const now = getLocalParts(new Date());
+  return `${now.year}-${now.month}-${now.day}`;
 }
 
 export function localTomorrowYMD(): string {
   const now = new Date();
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-
-  const [y, m, d] = fmt.format(now).split('-').map(Number);
+  const today = localTodayYMD();
+  const [y, m, d] = today.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
   dt.setUTCDate(dt.getUTCDate() + 1);
   return formatYMD(dt);
+}
+
+export function isPastLocalYMD(ymd: string): boolean {
+  return ymd < localTodayYMD();
 }
 
 export function isValidYMD(s: string): boolean {
@@ -78,20 +95,6 @@ export function isValidYMD(s: string): boolean {
 
 function isSameLocalDate(ymd: string): boolean {
   return ymd === localTodayYMD();
-}
-
-function getLocalHourRoundedUp(): number {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
-  const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
-
-  return hh + (mm >= 30 ? 1 : 0);
 }
 
 // -------------------- Generación de slots --------------------
@@ -114,9 +117,6 @@ function generateBaseSlots(
 
   const out: string[] = [];
 
-  // Importante:
-  // un slot solo es válido si SU INICIO es antes del cierre.
-  // Así evitamos incluir 13:00 o 23:00 como hora de inicio.
   while (d < end) {
     out.push(fmt(d));
     d = new Date(d.getTime() + slotMinutes * 60 * 1000);
@@ -125,7 +125,7 @@ function generateBaseSlots(
   return out;
 }
 
-/** Horarios base; si es hoy, filtra pasados. */
+/** Horarios base; si es hoy, filtra por instante real en la TZ local. */
 export function getAvailableHours(
   ymd: string,
   opts?: { open?: string; close?: string; slotMinutes?: number },
@@ -138,8 +138,8 @@ export function getAvailableHours(
 
   if (!isSameLocalDate(ymd)) return base;
 
-  const h = getLocalHourRoundedUp();
-  return base.filter((t) => Number(t.slice(0, 2)) >= h);
+  const now = new Date();
+  return base.filter((hhmm) => makeStartEndTZ(ymd, hhmm, TZ).start > now);
 }
 
 // -------------------- Mensajes --------------------
@@ -158,7 +158,7 @@ Horarios disponibles: ${avail.join(', ')}\n\nEscribe la *hora* (HH:mm, 24h).`;
 }
 
 // -------------------- Construcción de instantes con TZ --------------------
-/** compone start/end (60min) a partir de YYYY-MM-DD + HH:mm, corrigiendo TZ/DST. */
+/** compone start/end a partir de YYYY-MM-DD + HH:mm, corrigiendo TZ/DST. */
 export function makeStartEndTZ(
   ymd: string,
   hhmm: string,
@@ -178,6 +178,7 @@ export function makeStartEndTZ(
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    hourCycle: 'h23',
   });
 
   const parts = Object.fromEntries(
@@ -202,14 +203,6 @@ export function makeStartEndTZ(
 }
 
 // -------------------- Disponibilidad real con BD --------------------
-/**
- * Calcula horas disponibles contra reservas reales (sin solape).
- * @param ymd          YYYY-MM-DD (local)
- * @param courtId      id de la cancha
- * @param fetchExisting función que devuelve reservas existentes entre [dayStart, dayEnd]
- *                      para esa cancha. Cada item debe tener {startTime, endTime} (string ISO o Date).
- * @param opts         open/close/slotMinutes (por defecto 09-20, 60min)
- */
 export async function getAvailableHoursForCourt(
   ymd: string,
   courtId: string | number,
@@ -227,7 +220,7 @@ export async function getAvailableHoursForCourt(
   const base = getAvailableHours(ymd, { open, close, slotMinutes });
 
   const dayStart = makeStartEndTZ(ymd, '00:00', TZ).start;
-  const dayEnd = makeStartEndTZ(ymd, '23:59', TZ).start;
+  const dayEnd = new Date(makeStartEndTZ(ymd, '23:59', TZ).start.getTime() + 60 * 1000);
   const existing = await fetchExisting(courtId, dayStart, dayEnd);
 
   return base.filter((hhmm) => {

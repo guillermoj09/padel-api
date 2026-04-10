@@ -1,18 +1,42 @@
+const TZ = 'America/Santiago';
+
+function getTzParts(date: Date, timeZone = TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+  }).formatToParts(date);
+
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+
+  return {
+    year: String(map.year ?? '0000'),
+    month: String(map.month ?? '01').padStart(2, '0'),
+    day: String(map.day ?? '01').padStart(2, '0'),
+    hour: String(map.hour ?? '00').padStart(2, '0'),
+    minute: String(map.minute ?? '00').padStart(2, '0'),
+  };
+}
+
+function formatIsoInTz(iso: string, timeZone = TZ) {
+  return getTzParts(new Date(iso), timeZone);
+}
+
 export function shortSlotTitle(
   startIso: string,
   endIso: string,
   courtId: number | string,
 ) {
-  const d1 = new Date(startIso),
-    d2 = new Date(endIso);
-  const dd = String(d1.getDate()).padStart(2, '0');
-  const mm = String(d1.getMonth() + 1).padStart(2, '0');
-  const h1 = String(d1.getHours()).padStart(2, '0');
-  const m1 = String(d1.getMinutes()).padStart(2, '0');
-  const h2 = String(d2.getHours()).padStart(2, '0');
-  const m2 = String(d2.getMinutes()).padStart(2, '0');
-  // Máx compacidad p/ botones: "DD-MM HH:mm-HH:mm Cx" (≈ 19–21 chars)
-  return `${dd}-${mm} ${h1}:${m1}-${h2}:${m2} C${courtId}`;
+  const d1 = formatIsoInTz(startIso);
+  const d2 = formatIsoInTz(endIso);
+
+  // Máx compacidad p/ botones: "DD-MM HH:mm-HH:mm Cx"
+  return `${d1.day}-${d1.month} ${d1.hour}:${d1.minute}-${d2.hour}:${d2.minute} C${courtId}`;
 }
 
 export function ensureMax(s: string, max = 20) {
@@ -38,11 +62,8 @@ export function groupByDate(
 ) {
   return items.reduce(
     (acc, b) => {
-      const d = new Date(b.startTime);
-      const key =
-        `${String(d.getDate()).padStart(2, '0')}` +
-        `-${String(d.getMonth() + 1).padStart(2, '0')}` +
-        `-${d.getFullYear()}`;
+      const d = formatIsoInTz(b.startTime);
+      const key = `${d.day}-${d.month}-${d.year}`;
       (acc[key] ||= []).push(b);
       return acc;
     },
@@ -55,16 +76,10 @@ export function fmtSlot(
   endIso: string,
   courtId: number | string,
 ) {
-  const d1 = new Date(startIso),
-    d2 = new Date(endIso);
-  const dd = String(d1.getDate()).padStart(2, '0');
-  const mm = String(d1.getMonth() + 1).padStart(2, '0');
-  const yyyy = d1.getFullYear();
-  const h1 = String(d1.getHours()).padStart(2, '0');
-  const m1 = String(d1.getMinutes()).padStart(2, '0');
-  const h2 = String(d2.getHours()).padStart(2, '0');
-  const m2 = String(d2.getMinutes()).padStart(2, '0');
-  return `${dd}-${mm}-${yyyy} • ${h1}:${m1}-${h2}:${m2} · Cancha ${courtId}`;
+  const d1 = formatIsoInTz(startIso);
+  const d2 = formatIsoInTz(endIso);
+
+  return `${d1.day}-${d1.month}-${d1.year} • ${d1.hour}:${d1.minute}-${d2.hour}:${d2.minute} · Cancha ${courtId}`;
 }
 
 export function dmyToYmd(dmy: string): string {
@@ -73,6 +88,7 @@ export function dmyToYmd(dmy: string): string {
   const m = String(mm).padStart(2, '0');
   return `${yyyy}-${m}-${d}`; // YYYY-MM-DD
 }
+
 export function ymdToDmy(ymd: string): string {
   const [yyyy, mm, dd] = ymd.split('-');
   return `${dd}-${mm}-${yyyy}`; // DD-MM-YYYY

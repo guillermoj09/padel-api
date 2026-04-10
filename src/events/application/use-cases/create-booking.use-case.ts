@@ -11,6 +11,8 @@ import { CreateBookingDto } from '../dto/create-booking.dto';
 import { mapPricingSource } from '../mappers/pricing-source.mapper';
 import { CourtPricingRepository } from '../../domain/repositories/court-pricing.repository';
 
+const BUSINESS_TZ = 'America/Santiago';
+
 function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -24,6 +26,37 @@ function slotByCutoff(hhmm: string, cutoff: string | null | undefined) {
   }
 
   return mins < hhmmToMinutes(cutoff) ? ('AM' as const) : ('PM' as const);
+}
+
+function getLocalDateTimeParts(date: Date, timeZone = BUSINESS_TZ): {
+  ymd: string;
+  hhmm: string;
+  minutes: number;
+} {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+  }).formatToParts(date);
+
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+
+  const year = String(map.year ?? '0000');
+  const month = String(map.month ?? '01');
+  const day = String(map.day ?? '01');
+  const hour = Number(String(map.hour ?? '00'));
+  const minute = Number(String(map.minute ?? '00'));
+
+  return {
+    ymd: `${year}-${month}-${day}`,
+    hhmm: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    minutes: hour * 60 + minute,
+  };
 }
 
 @Injectable()
@@ -48,6 +81,21 @@ export class CreateBookingUseCase {
       );
     }
 
+    const startLocal = getLocalDateTimeParts(start);
+    const endLocal = getLocalDateTimeParts(end);
+
+    if (startLocal.ymd !== endLocal.ymd) {
+      throw new ConflictException('La reserva no puede cruzar de día.');
+    }
+
+    const bookingYmd = dto.date?.trim() || startLocal.ymd;
+
+    if (bookingYmd !== startLocal.ymd) {
+      throw new ConflictException(
+        'La fecha enviada no coincide con el horario de la reserva.',
+      );
+    }
+
     const conflict = await this.repo.existsActiveOverlap(
       dto.courtId,
       start,
@@ -60,15 +108,14 @@ export class CreateBookingUseCase {
       );
     }
 
-    const ymd = start.toISOString().slice(0, 10);
-    const pricingRaw = await this.pricingRepo.getPricingFor(dto.courtId, ymd);
+    const pricingRaw = await this.pricingRepo.getPricingFor(dto.courtId, bookingYmd);
 
     const cutoff = pricingRaw.cutoff ?? null;
 
     if (cutoff) {
       const cutMin = hhmmToMinutes(cutoff);
-      const sMin = start.getHours() * 60 + start.getMinutes();
-      const eMin = end.getHours() * 60 + end.getMinutes();
+      const sMin = startLocal.minutes;
+      const eMin = endLocal.minutes;
 
       if (sMin < cutMin && eMin > cutMin) {
         throw new ConflictException(
@@ -77,11 +124,7 @@ export class CreateBookingUseCase {
       }
     }
 
-    const startHHmm = `${String(start.getHours()).padStart(2, '0')}:${String(
-      start.getMinutes(),
-    ).padStart(2, '0')}`;
-
-    const slot = slotByCutoff(startHHmm, cutoff);
+    const slot = slotByCutoff(startLocal.hhmm, cutoff);
     const priceApplied =
       slot === 'AM' ? pricingRaw.amPrice : pricingRaw.pmPrice;
 
@@ -109,7 +152,7 @@ export class CreateBookingUseCase {
       paymentConfirmedBy: null,
       startTime: start,
       endTime: end,
-      date: ymd,
+      date: bookingYmd,
       status: dto.status ?? BookingStatus.Confirmed,
       contactId: dto.contactId ?? undefined,
       title: dto.title ?? null,

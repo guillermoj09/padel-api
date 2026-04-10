@@ -9,12 +9,14 @@ import { CourtPricingRepository } from '../../../events/domain/repositories/cour
 import {
   localTodayYMD,
   localTomorrowYMD,
+  isValidDMY,
   isValidHHmm,
+  isPastLocalYMD,
   makeStartEndTZ,
   getAvailableHoursForCourt,
   TZ,
 } from '../services/time.utils';
-import { ymdToDmy, reDateDMY, dmyToYmd } from './helpers';
+import { ymdToDmy, dmyToYmd } from './helpers';
 import { CourtsReaderPort } from '../../../courts/domain/ports/courts-reader.port';
 
 const BUSINESS_AM = { open: '07:00', close: '13:00', slotMinutes: 90 };
@@ -390,6 +392,11 @@ export class ReservationFlow {
       );
       return;
     } else {
+      await this.messenger.sendButtons(
+        from,
+        'No entendí la fecha 😅\nElige una de las opciones disponibles.',
+        DATE_BTNS,
+      );
       return;
     }
 
@@ -419,7 +426,7 @@ export class ReservationFlow {
       return;
     }
 
-    if (!reDateDMY.test(payload)) {
+    if (!isValidDMY(payload)) {
       await this.messenger.sendText(
         from,
         'No entendí la fecha 😅\nEscríbela en formato **DD-MM-AAAA** o escribe **mañana**.\nEjemplo: 25-03-2026\n\nEscribe *atras* para volver.',
@@ -427,7 +434,17 @@ export class ReservationFlow {
       return;
     }
 
-    session.date = dmyToYmd(payload);
+    const parsedYmd = dmyToYmd(payload);
+
+    if (isPastLocalYMD(parsedYmd)) {
+      await this.messenger.sendText(
+        from,
+        'Esa fecha ya pasó 😅\nEscríbeme una fecha de hoy en adelante en formato **DD-MM-AAAA** o escribe **mañana**.',
+      );
+      return;
+    }
+
+    session.date = parsedYmd;
     session.step = 'choose_time';
     await this.setSession(from, session);
     await this.sendAvailability(
