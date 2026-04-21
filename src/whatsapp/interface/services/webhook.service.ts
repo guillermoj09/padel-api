@@ -63,4 +63,47 @@ export class WebhookService {
       },
     });
   }
+
+  async sendList(
+    to: string,
+    payload: {
+      header?: string;
+      body: string;
+      footer?: string;
+      buttonText?: string;
+      sections: {
+        title: string;
+        rows: { id: string; title: string; description?: string }[];
+      }[];
+    },
+  ) {
+    await this.post({
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        ...(payload.header
+          ? {
+              header: {
+                type: 'text',
+                text: payload.header,
+              },
+            }
+          : {}),
+        body: { text: payload.body },
+        ...(payload.footer ? { footer: { text: payload.footer } } : {}),
+        action: {
+          button: payload.buttonText ?? 'Ver opciones',
+          sections: payload.sections.map((section) => ({
+            title: section.title,
+            rows: section.rows.slice(0, 10).map((row) => ({
+              id: row.id,
+              title: row.title,
+              ...(row.description ? { description: row.description } : {}),
+            })),
+          })),
+        },
+      },
+    });
+  }
 }

@@ -15,10 +15,15 @@ import {
   CourtsReaderPort,
 } from '../../../courts/domain/ports/courts-reader.port';
 import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
+import {
+  FOOTBALL_RESERVATION_CONFIG,
+  PADEL_RESERVATION_CONFIG,
+} from '../flows/reservation.config';
 
 @Injectable()
 export class HandleIncomingMessageUseCase {
-  private readonly reservation: ReservationFlow;
+  private readonly reservationPadel: ReservationFlow;
+  private readonly reservationFootball: ReservationFlow;
   private readonly cancel: CancelFlow;
 
   constructor(
@@ -36,13 +41,24 @@ export class HandleIncomingMessageUseCase {
     @Inject('CourtPricingRepository')
     private readonly pricingRepo: CourtPricingRepository,
   ) {
-    this.reservation = new ReservationFlow(
+    this.reservationPadel = new ReservationFlow(
       messenger,
       sessions,
       bookings,
       this.createBooking,
       this.courtsReader,
       this.pricingRepo,
+      PADEL_RESERVATION_CONFIG,
+    );
+
+    this.reservationFootball = new ReservationFlow(
+      messenger,
+      sessions,
+      bookings,
+      this.createBooking,
+      this.courtsReader,
+      this.pricingRepo,
+      FOOTBALL_RESERVATION_CONFIG,
     );
 
     this.cancel = new CancelFlow(
@@ -91,12 +107,20 @@ export class HandleIncomingMessageUseCase {
 
     await this.messenger.sendButtons(
       from,
-      '¡Hola! 👋\nBienvenido Ecoclub by ProfeJoshua 🎾\n\nPuedo ayudarte con una reserva o con la cancelación de una reserva existente.\n\nElige una opción:',
+      '¡Hola! 👋\nBienvenido Ecoclub by ProfeJoshua 🎾⚽\n\nPuedo ayudarte con una reserva de pádel, una reserva de fútbol o con la cancelación de una reserva existente.\n\nElige una opción:',
       [
-        { id: 'opt_reserve', title: 'Reservar cancha' },
+        { id: 'opt_reserve_padel', title: 'Reservar pádel' },
+        { id: 'opt_reserve_football', title: 'Reservar fútbol' },
         { id: 'opt_cancel', title: 'Cancelar reserva' },
       ],
     );
+  }
+
+
+  private getReservationFlow(session: Session): ReservationFlow {
+    return session.flowType === 'futbol'
+      ? this.reservationFootball
+      : this.reservationPadel;
   }
 
   async execute(from: string, rawPayload: string): Promise<void> {
@@ -122,7 +146,7 @@ export class HandleIncomingMessageUseCase {
           'confirm_booking',
         ].includes(session.step)
       ) {
-        return this.reservation.goBack(waFrom, session);
+        return this.getReservationFlow(session).goBack(waFrom, session);
       }
 
       await this.messenger.sendText(
@@ -137,13 +161,34 @@ export class HandleIncomingMessageUseCase {
       return;
     }
 
-    if (p === 'reservar' || p === 'reserva' || payload === 'opt_reserve') {
+    if (
+      p === 'padel' ||
+      p === 'pádel' ||
+      p === 'reservar padel' ||
+      p === 'reservar pádel' ||
+      payload === 'opt_reserve_padel'
+    ) {
       const cleanSession = await this.ensureContact(
         waFrom,
         this.buildCleanSession(session),
       );
       await this.setSession(waFrom, cleanSession);
-      return this.reservation.start(waFrom, cleanSession);
+      return this.reservationPadel.start(waFrom, cleanSession);
+    }
+
+    if (
+      p === 'futbol' ||
+      p === 'fútbol' ||
+      p === 'reservar futbol' ||
+      p === 'reservar fútbol' ||
+      payload === 'opt_reserve_football'
+    ) {
+      const cleanSession = await this.ensureContact(
+        waFrom,
+        this.buildCleanSession(session),
+      );
+      await this.setSession(waFrom, cleanSession);
+      return this.reservationFootball.start(waFrom, cleanSession);
     }
 
     if (payload === 'opt_cancel') {
@@ -156,23 +201,27 @@ export class HandleIncomingMessageUseCase {
     }
 
     if (session.step === 'choose_cancha' && payload.startsWith('cancha_')) {
-      return this.reservation.chooseCancha(waFrom, session, payload);
+      return this.getReservationFlow(session).chooseCancha(waFrom, session, payload);
     }
 
     if (session.step === 'choose_date') {
-      return this.reservation.chooseDate(waFrom, session, payload);
+      return this.getReservationFlow(session).chooseDate(waFrom, session, payload);
     }
 
     if (session.step === 'awaiting_other_date') {
-      return this.reservation.awaitingOtherDate(waFrom, session, payload);
+      return this.getReservationFlow(session).awaitingOtherDate(
+        waFrom,
+        session,
+        payload,
+      );
     }
 
     if (session.step === 'choose_time') {
-      return this.reservation.chooseTime(waFrom, session, payload);
+      return this.getReservationFlow(session).chooseTime(waFrom, session, payload);
     }
 
     if (session.step === 'ask_name') {
-      return this.reservation.askNameAndPrepareConfirmation(
+      return this.getReservationFlow(session).askNameAndPrepareConfirmation(
         waFrom,
         session,
         payload,
@@ -181,7 +230,7 @@ export class HandleIncomingMessageUseCase {
 
     if (session.step === 'confirm_booking') {
       if (payload === 'CONFIRM_BOOKING') {
-        return this.reservation.confirmBooking(waFrom, session);
+        return this.getReservationFlow(session).confirmBooking(waFrom, session);
       }
 
       await this.messenger.sendText(

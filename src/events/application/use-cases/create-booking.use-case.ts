@@ -10,6 +10,7 @@ import { BookingRepository } from '../../domain/repositories/booking.repository'
 import { CreateBookingDto } from '../dto/create-booking.dto';
 import { mapPricingSource } from '../mappers/pricing-source.mapper';
 import { CourtPricingRepository } from '../../domain/repositories/court-pricing.repository';
+import { CourtBlockRepository } from '../../domain/repositories/court-block.repository';
 
 const BUSINESS_TZ = 'America/Santiago';
 
@@ -65,6 +66,8 @@ export class CreateBookingUseCase {
     @Inject('BookingRepository') private readonly repo: BookingRepository,
     @Inject('CourtPricingRepository')
     private readonly pricingRepo: CourtPricingRepository,
+    @Inject('CourtBlockRepository')
+    private readonly blocksRepo: CourtBlockRepository,
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<Booking> {
@@ -105,6 +108,18 @@ export class CreateBookingUseCase {
     if (conflict) {
       throw new ConflictException(
         'Ya existe una reserva activa en ese día/horario para esa cancha.',
+      );
+    }
+
+    const blocked = await this.blocksRepo.existsActiveOverlap(
+      dto.courtId,
+      start,
+      end,
+    );
+
+    if (blocked) {
+      throw new ConflictException(
+        'La cancha está bloqueada en ese día/horario.',
       );
     }
 

@@ -57,7 +57,7 @@ export class BookingController {
     return data;
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('administrador')
   @Get('me')
   me(@Req() req: any) {

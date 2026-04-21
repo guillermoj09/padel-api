@@ -4,6 +4,7 @@ export type ListCourtsParams = {
   q?: string;
   active?: boolean;
   limit?: number;
+  type?: string;
 };
 
 export interface CourtsRepository {

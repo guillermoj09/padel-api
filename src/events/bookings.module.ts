@@ -15,6 +15,12 @@ import { CourtPricingRepositoryTypeorm } from './infrastructure/typeorm/court-pr
 import { CourtSchema } from 'src/courts/infrastructure/typeorm/entities/court.schema';
 import { CourtDailyRateSchema } from 'src/courts/infrastructure/typeorm/entities/court-daily-rate.schema';
 import { ConfirmBookingPaymentUseCase } from './application/use-cases/confirm-booking-payment.use-case';
+import { CourtBlockSchema } from './infrastructure/typeorm/entities/court-block.schema';
+import { TypeOrmCourtBlockRepository } from './infrastructure/typeorm/court-block.repository.typeorm';
+import { CreateCourtBlockUseCase } from './application/use-cases/create-court-block.use-case';
+import { CancelCourtBlockUseCase } from './application/use-cases/cancel-court-block.use-case';
+import { GetCourtBlocksByCourtAndRangeUseCase } from './application/use-cases/get-court-blocks-by-court-and-range.use-case';
+import { CourtBlocksController } from './interface/controllers/court-blocks.controller';
 
 @Module({
   imports: [
@@ -23,9 +29,10 @@ import { ConfirmBookingPaymentUseCase } from './application/use-cases/confirm-bo
       ContactSchema,
       CourtSchema,
       CourtDailyRateSchema,
+      CourtBlockSchema,
     ]),
   ],
-  controllers: [BookingController],
+  controllers: [BookingController, CourtBlocksController],
   providers: [
     BookingMapper,
     CancelBookingUseCase,
@@ -34,10 +41,18 @@ import { ConfirmBookingPaymentUseCase } from './application/use-cases/confirm-bo
     GetBookingsUseCase,
     GetBookingsByCourtUseCase,
     GetCourtReservationsByDateRangeAndStatus,
+    CreateCourtBlockUseCase,
+    CancelCourtBlockUseCase,
+    GetCourtBlocksByCourtAndRangeUseCase,
     TypeOrmBookingRepository,
     {
       provide: 'BookingRepository',
       useClass: TypeOrmBookingRepository,
+    },
+    TypeOrmCourtBlockRepository,
+    {
+      provide: 'CourtBlockRepository',
+      useClass: TypeOrmCourtBlockRepository,
     },
     ContactsRepositoryTypeorm,
     { provide: 'ContactsRepository', useExisting: ContactsRepositoryTypeorm },
@@ -51,7 +66,10 @@ import { ConfirmBookingPaymentUseCase } from './application/use-cases/confirm-bo
     CancelBookingUseCase,
     ConfirmBookingPaymentUseCase,
     CreateBookingUseCase,
+    CreateCourtBlockUseCase,
+    CancelCourtBlockUseCase,
     'BookingRepository',
+    'CourtBlockRepository',
     'ContactsRepository',
     'CourtPricingRepository',
   ],
