@@ -274,6 +274,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
       where: { id: saved.id },
       relations: ['user', 'contact', 'court', 'payment'],
     });
+
     if (!full)
       throw new Error('Error al recargar la reserva después de guardarla.');
 

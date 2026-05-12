@@ -10,7 +10,6 @@ export class CourtsController {
 
   @Get()
   async list(@Query() q: GetCourtsQuery) {
-    console.log('entro a canchas 1');
     const active =
       typeof q.active === 'string' ? q.active === 'true' : q.active;
     const limitRaw = (q as any).limit;

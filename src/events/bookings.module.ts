@@ -21,6 +21,7 @@ import { CreateCourtBlockUseCase } from './application/use-cases/create-court-bl
 import { CancelCourtBlockUseCase } from './application/use-cases/cancel-court-block.use-case';
 import { GetCourtBlocksByCourtAndRangeUseCase } from './application/use-cases/get-court-blocks-by-court-and-range.use-case';
 import { CourtBlocksController } from './interface/controllers/court-blocks.controller';
+import { GetCourtCalendarUseCase } from './application/use-cases/get-court-calendar.use-case';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { CourtBlocksController } from './interface/controllers/court-blocks.cont
     CreateCourtBlockUseCase,
     CancelCourtBlockUseCase,
     GetCourtBlocksByCourtAndRangeUseCase,
+    GetCourtCalendarUseCase,
     TypeOrmBookingRepository,
     {
       provide: 'BookingRepository',

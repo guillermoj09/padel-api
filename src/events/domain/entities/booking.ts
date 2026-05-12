@@ -3,12 +3,14 @@ export enum BookingStatus {
   Pending = 'pending',
   Confirmed = 'confirmed',
   Cancelled = 'cancelled',
+  Blocked = 'blocked',
 }
 
 export enum BookingFilterStatus {
   Pending = 'pending',
   Confirmed = 'confirmed',
   Cancelled = 'cancelled',
+  Blocked = 'blocked',
   Paid = 'paid',
 }
 

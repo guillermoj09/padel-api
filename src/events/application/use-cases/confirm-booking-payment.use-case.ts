@@ -13,6 +13,7 @@ export class ConfirmBookingPaymentUseCase {
     id: string,
     input: { paymentMethod: PaymentMethod; confirmedBy: string },
   ): Promise<Booking> {
+    console.log(`Confirming payment for booking ${id} with method ${input.paymentMethod} by ${input.confirmedBy}`);
     return this.repo.confirmPayment(id, input);
   }
 }
