@@ -17,7 +17,12 @@ export class CourtsReaderService implements CourtsReaderPort {
     return this.repo.exists(id);
   }
 
-  list(params?: { q?: string; active?: boolean; limit?: number }): Promise<Court[]> {
+  list(params?: {
+    q?: string;
+    active?: boolean;
+    limit?: number;
+    type?: string;
+  }): Promise<Court[]> {
     return this.repo.list(params ?? {});
   }
 }

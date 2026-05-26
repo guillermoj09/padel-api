@@ -10,6 +10,7 @@ export class UpdateBookingPaymentMethodUseCase {
   ) {}
 
   async execute(id: string, paymentMethod: PaymentMethod): Promise<Booking> {
+    console.log(`Updating payment method for booking ${id} to ${paymentMethod}`);
     return this.repo.updatePaymentMethod(id, paymentMethod);
   }
 }

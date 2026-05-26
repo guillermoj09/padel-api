@@ -29,7 +29,8 @@ export class CourtsRepositoryTypeorm implements CourtsRepository {
         'c.currency',
         'c.priceCutoff',
       ])
-      .orderBy('c.id', 'ASC');
+      .orderBy('LOWER(c.name)', 'ASC')
+      .addOrderBy('c.id', 'ASC');
 
     if (typeof params.active === 'boolean') {
       qb.andWhere('c.active = :active', { active: params.active });
@@ -38,6 +39,12 @@ export class CourtsRepositoryTypeorm implements CourtsRepository {
     if (params.q && params.q.trim()) {
       const q = params.q.trim();
       qb.andWhere('c.name ILIKE :q', { q: `%${q}%` });
+    }
+
+    if (params.type && params.type.trim()) {
+      qb.andWhere('LOWER(c.type) = LOWER(:type)', {
+        type: params.type.trim(),
+      });
     }
 
     qb.take(params.limit ?? 10);

@@ -3,12 +3,14 @@ export enum BookingStatus {
   Pending = 'pending',
   Confirmed = 'confirmed',
   Cancelled = 'cancelled',
+  Blocked = 'blocked',
 }
 
 export enum BookingFilterStatus {
   Pending = 'pending',
   Confirmed = 'confirmed',
   Cancelled = 'cancelled',
+  Blocked = 'blocked',
   Paid = 'paid',
 }
 
@@ -38,7 +40,7 @@ export interface Booking {
   endTime: Date;
   date: string; // "YYYY-MM-DD"
   status: BookingStatus;
-  phoneNumber?: string;
+  phoneNumber?: string | null;
   contactId?: string;
   createdAt?: Date;
   updatedAt?: Date;

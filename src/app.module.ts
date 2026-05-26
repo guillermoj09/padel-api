@@ -21,7 +21,7 @@ import { AuthModule } from './auth/auth.module';
       database: process.env.DB_NAME || 'agenda_bd',
       entities: [__dirname + '/**/*.schema{.ts,.js}'],
       autoLoadEntities: true,
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: true,
     }),
 
     AuthModule,

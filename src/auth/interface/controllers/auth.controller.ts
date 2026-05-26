@@ -28,29 +28,20 @@ export class AuthController {
     private readonly jwt: JwtService,
     private readonly usersWriter: UsersWriterPort,
     private readonly usersReader: UsersReaderPort,
-  ) {}
+  ) { }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(
-    @Body() dto: LoginDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async login(@Body() dto: LoginDto) {
     const { access_token } = await this.loginUc.execute({
       email: dto.email,
       password: dto.password,
     });
 
-    const isProd = process.env.NODE_ENV === 'production';
-
-    res.cookie('access_token', access_token, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      path: '/',
-    });
-
-    return { ok: true };
+    return {
+      ok: true,
+      access_token,
+    };
   }
 
   @UseGuards(AuthGuard('jwt'))
@@ -74,7 +65,7 @@ export class AuthController {
 
     res.clearCookie('access_token', {
       httpOnly: true,
-      secure: isProd,
+      secure: false,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });
