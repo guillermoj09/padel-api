@@ -6,6 +6,7 @@ import { BookingRepository } from '../../../events/domain/repositories/booking.r
 import { CreateBookingUseCase } from '../../../events/application/use-cases/create-booking.use-case';
 import { BookingStatus, PaymentMethod } from '../../../events/domain/entities/booking';
 import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
+import { CourtBlockRepository } from '../../../events/domain/repositories/court-block.repository';
 import {
   localTodayYMD,
   localTomorrowYMD,
@@ -39,6 +40,7 @@ export class ReservationFlow {
     private readonly createBooking: CreateBookingUseCase,
     private readonly courtsReader: CourtsReaderPort,
     private readonly pricingRepo: CourtPricingRepository,
+    private readonly courtBlocks: CourtBlockRepository,
     private readonly config: ReservationFlowConfig,
   ) {}
 
@@ -228,27 +230,40 @@ export class ReservationFlow {
     ymd: string,
     courtId: string | number,
   ) {
-    const fetchBookings = async (
+    const fetchBusyEvents = async (
       cId: string | number,
       dayStart: Date,
       dayEnd: Date,
     ) => {
-      const rows = await this.bookings.findByCourtAndDateRange(
-        String(cId),
-        dayStart,
-        dayEnd,
-      );
+      const [bookings, courtBlocks] = await Promise.all([
+        this.bookings.findByCourtAndDateRange(
+          String(cId),
+          dayStart,
+          dayEnd,
+        ),
+        this.courtBlocks.findByCourtAndDateRange(
+          String(cId),
+          dayStart,
+          dayEnd,
+        ),
+      ]);
 
-      return rows.map((r) => ({
-        startTime: r.startTime,
-        endTime: r.endTime,
-      }));
+      return [
+        ...bookings.map((booking) => ({
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+        })),
+        ...courtBlocks.map((block) => ({
+          startTime: block.startTime,
+          endTime: block.endTime,
+        })),
+      ];
     };
 
     const blocks = await Promise.all(
       this.config.windows.map(async (window) => ({
         window,
-        slots: await getAvailableHoursForCourt(ymd, courtId, fetchBookings, {
+        slots: await getAvailableHoursForCourt(ymd, courtId, fetchBusyEvents, {
           open: window.open,
           close: window.close,
           slotMinutes: window.slotMinutes,

@@ -40,7 +40,7 @@ export interface Booking {
   endTime: Date;
   date: string; // "YYYY-MM-DD"
   status: BookingStatus;
-  phoneNumber?: string;
+  phoneNumber?: string | null;
   contactId?: string;
   createdAt?: Date;
   updatedAt?: Date;

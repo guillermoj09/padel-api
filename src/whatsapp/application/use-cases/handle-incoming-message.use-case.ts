@@ -15,6 +15,7 @@ import {
   CourtsReaderPort,
 } from '../../../courts/domain/ports/courts-reader.port';
 import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
+import { CourtBlockRepository } from '../../../events/domain/repositories/court-block.repository';
 import {
   FOOTBALL_RESERVATION_CONFIG,
   PADEL_RESERVATION_CONFIG,
@@ -40,6 +41,8 @@ export class HandleIncomingMessageUseCase {
     private readonly courtsReader: CourtsReaderPort,
     @Inject('CourtPricingRepository')
     private readonly pricingRepo: CourtPricingRepository,
+    @Inject('CourtBlockRepository')
+    private readonly courtBlocks: CourtBlockRepository,
   ) {
     this.reservationPadel = new ReservationFlow(
       messenger,
@@ -48,6 +51,7 @@ export class HandleIncomingMessageUseCase {
       this.createBooking,
       this.courtsReader,
       this.pricingRepo,
+      this.courtBlocks,
       PADEL_RESERVATION_CONFIG,
     );
 
@@ -58,6 +62,7 @@ export class HandleIncomingMessageUseCase {
       this.createBooking,
       this.courtsReader,
       this.pricingRepo,
+      this.courtBlocks,
       FOOTBALL_RESERVATION_CONFIG,
     );
 

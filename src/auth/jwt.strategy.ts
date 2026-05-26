@@ -56,6 +56,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     role?: string;
     v?: number;
   }) {
+    console.log('[JWT PAYLOAD]', payload);
     const user = await this.usersReader.findById(payload.sub);
     if (!user) throw new UnauthorizedException('Usuario no existe');
 

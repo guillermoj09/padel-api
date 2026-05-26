@@ -296,7 +296,7 @@ export class TypeOrmBookingRepository implements BookingRepository {
       status: schema.status,
       date: schema.date,
       title: schema.title ?? null,
-      phoneNumber: schema.contact?.waPhone,
+      phoneNumber: schema.contact?.waPhone ?? null,
       contactId: schema.contactId ?? schema.contact?.id ?? undefined,
       createdAt: (schema as any).createdAt ?? undefined,
       updatedAt: (schema as any).updatedAt ?? undefined,

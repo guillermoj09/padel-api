@@ -15,19 +15,24 @@ export class GetCourtCalendarUseCase {
       this.getBookingsByCourtUseCase.execute(courtId, from, to),
       this.getCourtBlocksByCourtAndRangeUseCase.execute(courtId, from, to),
     ]);
-    const bookingEvents = bookings.map((booking) => ({
-      id: `${booking.id}`,
-      rawId: booking.id,
-      title: booking.title ?? 'Reserva',
-      start: booking.startTime,
-      end: booking.endTime,
-      estado:
-        booking.status === BookingStatus.Cancelled ? 'cancelada' : 'reservada',
-      canchaId: booking.courtId,
-      resourceId: String(booking.courtId),
-      type: 'booking',
-      raw: booking,
-    }));
+    const bookingEvents = bookings.map((booking) => {
+      const { phoneNumber, ...bookingRaw } = booking;
+
+      return {
+        id: `${booking.id}`,
+        rawId: booking.id,
+        title: booking.title ?? 'Reserva',
+        start: booking.startTime,
+        end: booking.endTime,
+        estado:
+          booking.status === BookingStatus.Cancelled ? 'cancelada' : 'reservada',
+        canchaId: booking.courtId,
+        resourceId: String(booking.courtId),
+        type: 'booking',
+        phoneNumber: phoneNumber ?? null,
+        raw: bookingRaw,
+      };
+    });
 
     const blockEvents = blocks.map((block) => ({
       id: `block-${block.id}`,
