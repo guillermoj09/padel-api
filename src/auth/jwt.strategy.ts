@@ -33,7 +33,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private readonly usersReader: UsersReaderPort,
   ) {
     const secret = process.env.JWT_SECRET;
-    console.log(`${secret}`);
     if (!secret) {
       // fallar temprano; evita firmar/verificar con secretos distintos o undefined
       throw new Error('JWT_SECRET no definido');
