@@ -32,15 +32,28 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { access_token } = await this.loginUc.execute({
       email: dto.email,
       password: dto.password,
     });
 
+    const isProd = process.env.NODE_ENV === 'production';
+
+    res.cookie('access_token', access_token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
+      maxAge: 1000 * 60 * 60 * 24,
+    });
+
     return {
       ok: true,
-      access_token,
+      access_token
     };
   }
 
@@ -65,7 +78,7 @@ export class AuthController {
 
     res.clearCookie('access_token', {
       httpOnly: true,
-      secure: false,
+      secure: true,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });
