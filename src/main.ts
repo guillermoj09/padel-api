@@ -6,6 +6,10 @@ import * as cookieParser from 'cookie-parser';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  app.use(cookieParser());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -14,8 +18,6 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-
-  app.use(cookieParser());
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
@@ -26,11 +28,14 @@ async function bootstrap() {
       'https://www.profejoshua.cl',
     ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   const port = Number(process.env.PORT || 3002);
 
   await app.listen(port, '0.0.0.0');
+
   console.log(`🚀 Server is running on port ${port}`);
 }
 
