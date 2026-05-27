@@ -28,7 +28,7 @@ export class AuthController {
     private readonly jwt: JwtService,
     private readonly usersWriter: UsersWriterPort,
     private readonly usersReader: UsersReaderPort,
-  ) {}
+  ) { }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -48,9 +48,13 @@ export class AuthController {
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
+      maxAge: 1000 * 60 * 60 * 24,
     });
 
-    return { ok: true };
+    return {
+      ok: true,
+      access_token
+    };
   }
 
   @UseGuards(AuthGuard('jwt'))
@@ -74,7 +78,7 @@ export class AuthController {
 
     res.clearCookie('access_token', {
       httpOnly: true,
-      secure: isProd,
+      secure: true,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
     });

@@ -30,6 +30,7 @@ import {
 } from 'src/events/domain/entities/booking';
 import { ConfirmBookingPaymentDto } from '../dto/confirm-booking-payment.dto';
 import { ConfirmBookingPaymentUseCase } from '../../application/use-cases/confirm-booking-payment.use-case';
+import { GetCourtCalendarUseCase } from '../../application/use-cases/get-court-calendar.use-case';
 
 @Controller('bookings')
 export class BookingController {
@@ -39,6 +40,7 @@ export class BookingController {
     private readonly cancelBooking: CancelBookingUseCase,
     private readonly getCourtReservationsByDateRangeAndStatus: GetCourtReservationsByDateRangeAndStatus,
     private readonly confirmBookingPaymentUseCase: ConfirmBookingPaymentUseCase,
+    private readonly getCourtCalendarUseCase: GetCourtCalendarUseCase,
   ) {}
 
   @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -57,7 +59,23 @@ export class BookingController {
     return data;
   }
 
-  @UseGuards(AuthGuard('jwt'))
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('administrador')
+  @Get('court/:courtId/calendar')
+  async getCourtCalendar(
+    @Param('courtId') courtId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.getCourtCalendarUseCase.execute(
+      courtId,
+      new Date(from),
+      new Date(to),
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('administrador')
   @Get('me')
   me(@Req() req: any) {
@@ -130,7 +148,7 @@ export class BookingController {
     @Query('status') legacyStatus?: BookingFilterStatus,
   ) {
     const appliedFilter = filter ?? legacyStatus;
-
+    console.log('getBookignsByRange', { courtId, from, to, filter, legacyStatus });
     return this.getCourtReservationsByDateRangeAndStatus.execute(
       courtId,
       appliedFilter,

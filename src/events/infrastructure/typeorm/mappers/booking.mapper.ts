@@ -137,6 +137,11 @@ export class BookingMapper {
       (schema as any).Title ??
       this.buildTitleFallback(schema);
 
+    const phoneNumber =
+      (schema as any).contact?.waPhone ??
+      (schema as any).contact?.wa_phone ??
+      null;
+
     return {
       id: (schema as any).id,
       userId: userId ?? null,
@@ -152,6 +157,7 @@ export class BookingMapper {
       date: (toYmdIfDateOrString(dateRaw) ??
         (typeof dateRaw === 'string' && dateRaw) ??
         new Date().toISOString().slice(0, 10)) as string,
+      phoneNumber,
       contactId,
       createdAt: toDateIfString(createdAtRaw) ?? undefined,
       updatedAt: toDateIfString(updatedAtRaw) ?? undefined,

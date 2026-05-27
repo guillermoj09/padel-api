@@ -3,6 +3,17 @@ export interface Button {
   title: string;
 }
 
+export interface ListSectionRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface ListSection {
+  title: string;
+  rows: ListSectionRow[];
+}
+
 // domain/ports/messenger.port.ts
 export interface MessengerPort {
   sendText(to: string, text: string): Promise<void>;
@@ -11,17 +22,14 @@ export interface MessengerPort {
     body: string,
     buttons: { id: string; title: string }[],
   ): Promise<void>;
-  // ⬇️ opcional (WhatsApp List Message)
   sendList?(
     to: string,
     payload: {
       header?: string;
       body: string;
       footer?: string;
-      sections: {
-        title: string;
-        rows: { id: string; title: string; description?: string }[];
-      }[];
+      buttonText?: string;
+      sections: ListSection[];
     },
   ): Promise<void>;
 }

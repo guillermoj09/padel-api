@@ -11,6 +11,7 @@ export type Step =
 
 export type Session = {
   step: Step;
+  flowType?: 'padel' | 'futbol' | 'general';
   cancha?: number;
   date?: string;
   time?: string;
