@@ -4,7 +4,7 @@ import { HandleIncomingMessageUseCase } from '../../application/use-cases/handle
 
 @Controller('webhook/whatsapp')
 export class WebhookController {
-  constructor(private readonly handleMessage: HandleIncomingMessageUseCase) {}
+  constructor(private readonly handleMessage: HandleIncomingMessageUseCase) { }
 
   @Get()
   verify(
@@ -13,6 +13,15 @@ export class WebhookController {
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
   ) {
+    const expectedToken = (process.env.WHATSAPP_VERIFY_TOKEN ?? '').trim();
+    const receivedToken = (token ?? '').trim();
+    console.log('WEBHOOK VERIFY');
+    console.log('mode:', mode);
+    console.log('token recibido:', JSON.stringify(receivedToken));
+    console.log('token esperado cargado:', expectedToken ? 'SI' : 'NO');
+    console.log('token esperado valor:', JSON.stringify(expectedToken));
+    console.log('challenge:', challenge);
+
     if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
       return res.status(200).send(challenge);
     }
