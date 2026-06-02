@@ -15,7 +15,7 @@ import { BookingRepository } from 'src/events/domain/repositories/booking.reposi
 import { ContactsRepository } from 'src/events/domain/repositories/contacts.repository';
 import { COURTS_READER, CourtsReaderPort } from 'src/courts/domain/ports/courts-reader.port';
 import { CourtPricingRepository } from 'src/events/domain/repositories/court-pricing.repository';
-import { CourtBlockRepository } from 'src/events/domain/repositories/court-block.repository';
+import { CourtAvailabilityService } from 'src/courts/application/services/court-availability.service';
 
 @Module({
   imports: [BookingsModule, CourtsModule],
@@ -35,7 +35,7 @@ import { CourtBlockRepository } from 'src/events/domain/repositories/court-block
         createBookingUseCase: CreateBookingUseCase,
         courtsReader: CourtsReaderPort,
         pricingRepo: CourtPricingRepository,
-        courtBlocks: CourtBlockRepository,
+        availability: CourtAvailabilityService,
       ) => {
         return new HandleIncomingMessageUseCase(
           messenger,
@@ -46,7 +46,7 @@ import { CourtBlockRepository } from 'src/events/domain/repositories/court-block
           createBookingUseCase,
           courtsReader,
           pricingRepo,
-          courtBlocks,
+          availability,
         );
       },
       inject: [
@@ -58,7 +58,7 @@ import { CourtBlockRepository } from 'src/events/domain/repositories/court-block
         CreateBookingUseCase,
         COURTS_READER,
         'CourtPricingRepository',
-        'CourtBlockRepository',
+        CourtAvailabilityService,
       ],
     },
   ],

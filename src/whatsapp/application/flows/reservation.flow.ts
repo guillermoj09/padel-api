@@ -2,28 +2,21 @@ import { MessengerPort } from '../../domain/ports/messenger.port';
 import { SessionStorePort } from '../../domain/ports/session.store.port';
 import { Session } from '../../domain/types/session.types';
 import { ConflictException } from '@nestjs/common';
-import { BookingRepository } from '../../../events/domain/repositories/booking.repository';
 import { CreateBookingUseCase } from '../../../events/application/use-cases/create-booking.use-case';
 import { BookingStatus, PaymentMethod } from '../../../events/domain/entities/booking';
 import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
-import { CourtBlockRepository } from '../../../events/domain/repositories/court-block.repository';
 import {
   localTodayYMD,
   localTomorrowYMD,
   isValidDMY,
   isValidHHmm,
   isPastLocalYMD,
-  makeStartEndTZ,
-  getAvailableHoursForCourt,
-  TZ,
 } from '../services/time.utils';
 import { ymdToDmy, dmyToYmd } from './helpers';
 import { CourtsReaderPort } from '../../../courts/domain/ports/courts-reader.port';
 import { Court } from '../../../courts/domain/entities/court';
-import {
-  ReservationFlowConfig,
-  ReservationWindow,
-} from './reservation.config';
+import { CourtAvailabilityService } from '../../../courts/application/services/court-availability.service';
+import { ReservationFlowConfig } from './reservation.config';
 
 const DATE_BTNS = [
   { id: 'date_today', title: 'Hoy' },
@@ -37,11 +30,10 @@ export class ReservationFlow {
   constructor(
     private readonly messenger: MessengerPort,
     private readonly sessions: SessionStorePort,
-    private readonly bookings: BookingRepository,
     private readonly createBooking: CreateBookingUseCase,
     private readonly courtsReader: CourtsReaderPort,
     private readonly pricingRepo: CourtPricingRepository,
-    private readonly courtBlocks: CourtBlockRepository,
+    private readonly availability: CourtAvailabilityService,
     private readonly config: ReservationFlowConfig,
   ) {}
 
@@ -66,12 +58,10 @@ export class ReservationFlow {
   }
 
   private sportSuffix(): string {
-    return this.config.courtType ? ` de ${this.sportLabel}` : '';
+    return ` de ${this.sportLabel}`;
   }
 
   private matchesConfiguredCourtType(courtType?: string | null): boolean {
-    if (!this.config.courtType) return true;
-
     return (
       this.normalizeText(courtType) === this.normalizeText(this.config.courtType)
     );
@@ -80,55 +70,8 @@ export class ReservationFlow {
   private async listActiveCourts(): Promise<Court[]> {
     return this.courtsReader.list({
       active: true,
-      limit: 50,
+      limit: 100,
       type: this.config.courtType,
-    });
-  }
-
-  private async buildCourtOptions() {
-    const courts = await this.listActiveCourts();
-
-    return courts.map((court) => ({
-      id: `cancha_${court.id}`,
-      title: court.name,
-      description:
-        court.defaultAmPrice || court.defaultPmPrice
-          ? `AM ${court.defaultAmPrice ?? 0} ${court.currency ?? 'CLP'} · PM ${court.defaultPmPrice ?? 0} ${court.currency ?? 'CLP'}`
-          : undefined,
-    }));
-  }
-
-  private async sendCourtPicker(from: string, body: string) {
-    const options = await this.buildCourtOptions();
-
-    if (!options.length) {
-      await this.messenger.sendText(
-        from,
-        `No hay canchas${this.sportSuffix()} activas disponibles en este momento.`,
-      );
-      return;
-    }
-
-    if (options.length <= 3 || !this.messenger.sendList) {
-      await this.messenger.sendButtons(
-        from,
-        body,
-        options.slice(0, 3).map(({ id, title }) => ({ id, title })),
-      );
-      return;
-    }
-
-    await this.messenger.sendList(from, {
-      header: `${this.sportIcon} Reserva de ${this.sportLabel}`,
-      body,
-      footer: 'Elige una opción de la lista.',
-      buttonText: 'Ver canchas',
-      sections: [
-        {
-          title: `Canchas de ${this.sportLabel}`,
-          rows: options.slice(0, 10),
-        },
-      ],
     });
   }
 
@@ -157,15 +100,70 @@ export class ReservationFlow {
     return mins < this.hhmmToMinutes(cutoff) ? 'AM' : 'PM';
   }
 
-  private resolveWindowByTime(time: string): ReservationWindow | null {
-    const mins = this.hhmmToMinutes(time);
+  private normalizeHourInput(payload: string): string | null {
+    const raw = String(payload ?? '').trim().replace('.', ':');
 
-    return (
-      this.config.windows.find((window) => {
-        const open = this.hhmmToMinutes(window.open);
-        const close = this.hhmmToMinutes(window.close);
-        return mins >= open && mins < close;
-      }) ?? null
+    let candidate = raw;
+
+    if (/^\d{1,2}$/.test(raw)) {
+      candidate = `${raw.padStart(2, '0')}:00`;
+    } else if (/^\d{3,4}$/.test(raw)) {
+      const padded = raw.padStart(4, '0');
+      candidate = `${padded.slice(0, 2)}:${padded.slice(2)}`;
+    } else if (/^\d{1,2}:\d{1,2}$/.test(raw)) {
+      const [h, m] = raw.split(':');
+      candidate = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+    }
+
+    return isValidHHmm(candidate) ? candidate : null;
+  }
+
+  private sortSlots(slots: string[]): string[] {
+    return [...new Set(slots)].sort(
+      (a, b) => this.hhmmToMinutes(a) - this.hhmmToMinutes(b),
+    );
+  }
+
+  private async getAvailableSlotsAcrossCourts(ymd: string): Promise<string[]> {
+    const blocks = await this.availability.getAvailableHours(
+      this.config.courtType,
+      ymd,
+    );
+
+    return this.sortSlots(
+      blocks.flatMap((block) => block.slots.map((slot) => slot.time)),
+    );
+  }
+
+  private async getAvailableCourtsForTime(
+    ymd: string,
+    time: string,
+  ): Promise<Court[]> {
+    const result = await this.availability.getAvailableCourtsForTime(
+      this.config.courtType,
+      ymd,
+      time,
+    );
+
+    return result.courts;
+  }
+
+  private async buildAvailableCourtOptionsForTime(ymd: string, time: string) {
+    const courts = await this.getAvailableCourtsForTime(ymd, time);
+
+    return Promise.all(
+      courts.map(async (court) => {
+        const pricing = await this.pricingRepo.getPricingFor(court.id, ymd);
+        const slot = this.resolveSlotByCutoff(time, pricing.cutoff);
+        const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
+
+        return {
+          id: `cancha_${court.id}`,
+          title: court.name,
+          description: `Precio ${priceApplied} ${pricing.currency ?? court.currency ?? 'CLP'}`,
+          courtId: court.id,
+        };
+      }),
     );
   }
 
@@ -227,122 +225,37 @@ export class ReservationFlow {
     );
   }
 
-  private async getAvailableSlotsDetailed(
-    ymd: string,
-    courtId: string | number,
-  ) {
-    const fetchBusyEvents = async (
-      cId: string | number,
-      dayStart: Date,
-      dayEnd: Date,
-    ) => {
-      const [bookings, courtBlocks] = await Promise.all([
-        this.bookings.findByCourtAndDateRange(
-          String(cId),
-          dayStart,
-          dayEnd,
-        ),
-        this.courtBlocks.findByCourtAndDateRange(
-          String(cId),
-          dayStart,
-          dayEnd,
-        ),
-      ]);
-
-      return [
-        ...bookings.map((booking) => ({
-          startTime: booking.startTime,
-          endTime: booking.endTime,
-        })),
-        ...courtBlocks.map((block) => ({
-          startTime: block.startTime,
-          endTime: block.endTime,
-        })),
-      ];
-    };
-
-    const blocks = await Promise.all(
-      this.config.windows.map(async (window) => ({
-        window,
-        slots: await getAvailableHoursForCourt(ymd, courtId, fetchBusyEvents, {
-          open: window.open,
-          close: window.close,
-          slotMinutes: window.slotMinutes,
-        }),
-      })),
-    );
-
-    return blocks;
-  }
-
-  private async getAvailableSlots(ymd: string, courtId: string | number) {
-    const blocks = await this.getAvailableSlotsDetailed(ymd, courtId);
-    return blocks.flatMap((block) => block.slots);
-  }
-
-  private sortSlots(slots: string[]): string[] {
-    return [...new Set(slots)].sort(
-      (a, b) => this.hhmmToMinutes(a) - this.hhmmToMinutes(b),
-    );
-  }
-
-  private async listCourtsWithAvailableSlots(
-    ymd: string,
-  ): Promise<Array<{ court: Court; slots: string[] }>> {
-    const courts = await this.listActiveCourts();
-
-    return Promise.all(
-      courts.map(async (court) => ({
-        court,
-        slots: await this.getAvailableSlots(ymd, court.id),
-      })),
-    );
-  }
-
-  private async getAvailableSlotsAcrossCourts(ymd: string): Promise<string[]> {
-    const courtsWithSlots = await this.listCourtsWithAvailableSlots(ymd);
-    return this.sortSlots(courtsWithSlots.flatMap(({ slots }) => slots));
-  }
-
-  private async getAvailableCourtsForTime(
-    ymd: string,
-    time: string,
-  ): Promise<Court[]> {
-    const courtsWithSlots = await this.listCourtsWithAvailableSlots(ymd);
-
-    return courtsWithSlots
-      .filter(({ slots }) => slots.includes(time))
-      .map(({ court }) => court);
-  }
-
-  private async buildAvailableCourtOptionsForTime(ymd: string, time: string) {
-    const courts = await this.getAvailableCourtsForTime(ymd, time);
-
-    return Promise.all(
-      courts.map(async (court) => {
-        const pricing = await this.pricingRepo.getPricingFor(court.id, ymd);
-        const slot = this.resolveSlotByCutoff(time, pricing.cutoff);
-        const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
-
-        return {
-          id: `cancha_${court.id}`,
-          title: court.name,
-          description: `Precio ${priceApplied} ${pricing.currency ?? court.currency ?? 'CLP'}`,
-          courtId: court.id,
-        };
-      }),
-    );
-  }
-
-  private async sendAvailability(
+  private async sendAvailabilityAcrossCourts(
     from: string,
     session: Session,
     ymd: string,
-    courtId: string | number,
   ) {
-    const blocks = await this.getAvailableSlotsDetailed(ymd, courtId);
-    const slots = blocks.flatMap((block) => block.slots);
+    const courts = await this.listActiveCourts();
+    const blocks = await this.availability.getAvailableHours(
+      this.config.courtType,
+      ymd,
+    );
+    const slots = this.sortSlots(
+      blocks.flatMap((block) => block.slots.map((slot) => slot.time)),
+    );
     const shown = ymdToDmy(ymd);
+
+    if (!courts.length) {
+      await this.messenger.sendText(
+        from,
+        `No hay canchas${this.sportSuffix()} activas disponibles en este momento.`,
+      );
+      return;
+    }
+
+    if (!blocks.length) {
+      await this.messenger.sendText(
+        from,
+        `No hay horarios configurados para ${this.sportLabel}.\n` +
+          `Revisa la tabla *court_schedule_windows*.`,
+      );
+      return;
+    }
 
     if (!slots.length) {
       session.step = 'awaiting_other_date';
@@ -358,70 +271,14 @@ export class ReservationFlow {
     }
 
     const blockTexts = blocks.map(({ window, slots: blockSlots }) => {
-      if (!blockSlots.length) {
-        return `${window.emoji} *${window.label}:*\n• Sin horarios disponibles`;
-      }
-
-      return `${window.emoji} *${window.label}:*\n${blockSlots
-        .map((h) => `• ${h}`)
-        .join('\n')}`;
-    });
-
-    await this.messenger.sendText(
-      from,
-      `📅 *Fecha seleccionada:* ${shown}\n\n` +
-        `${blockTexts.join('\n\n')}\n\n` +
-        `Escribe la hora que quieres reservar en formato *HH:mm*.\n` +
-        `Ejemplo: *18:30*\n\n` +
-        `Escribe *atras* para volver.`,
-    );
-  }
-
-  private async sendAvailabilityAcrossCourts(
-    from: string,
-    session: Session,
-    ymd: string,
-  ) {
-    const courtsWithSlots = await this.listCourtsWithAvailableSlots(ymd);
-    const slots = this.sortSlots(courtsWithSlots.flatMap(({ slots }) => slots));
-    const shown = ymdToDmy(ymd);
-
-    if (!courtsWithSlots.length) {
-      await this.messenger.sendText(
-        from,
-        `No hay canchas${this.sportSuffix()} activas disponibles en este momento.`,
-      );
-      return;
-    }
-
-    if (!slots.length) {
-      session.step = 'awaiting_other_date';
-      await this.setSession(from, session);
-
-      await this.messenger.sendText(
-        from,
-        `😕 No hay horarios disponibles para *${shown}*.\n\n` +
-          `Escribe *mañana* o una nueva fecha en formato *DD-MM-AAAA*.\n` +
-          `Ejemplo: *25-03-2026*`,
-      );
-      return;
-    }
-
-    const blockTexts = this.config.windows.map((window) => {
-      const blockSlots = slots.filter((slot) => {
-        const mins = this.hhmmToMinutes(slot);
-        return (
-          mins >= this.hhmmToMinutes(window.open) &&
-          mins < this.hhmmToMinutes(window.close)
-        );
-      });
+      const emoji = window.emoji ?? '🕒';
 
       if (!blockSlots.length) {
-        return `${window.emoji} *${window.label}:*\n• Sin horarios disponibles`;
+        return `${emoji} *${window.label}:*\n• Sin horarios disponibles`;
       }
 
-      return `${window.emoji} *${window.label}:*\n${blockSlots
-        .map((h) => `• ${h}`)
+      return `${emoji} *${window.label}:*\n${blockSlots
+        .map((slot) => `• ${slot.time}`)
         .join('\n')}`;
     });
 
@@ -430,8 +287,8 @@ export class ReservationFlow {
       `📅 *Fecha seleccionada:* ${shown}\n\n` +
         `${blockTexts.join('\n\n')}\n\n` +
         `Estos horarios tienen al menos una cancha disponible.\n` +
-        `Escribe la hora que quieres reservar en formato *HH:mm*.\n` +
-        `Ejemplo: *18:30*\n\n` +
+        `Escribe la hora que quieres reservar.\n` +
+        `Ejemplos: *8*, *08:00*, *18:30*\n\n` +
         `Escribe *atras* para volver.`,
     );
   }
@@ -463,7 +320,7 @@ export class ReservationFlow {
         from,
         `Ese horario ya no tiene canchas disponibles para *${shown}*.\n` +
           `Horas disponibles: ${avail.join(', ') || 'sin horarios'}\n\n` +
-          `Elige otra hora en formato *HH:mm*.\n\n` +
+          `Elige otra hora.\n\n` +
           `Escribe *atras* para volver.`,
       );
       return;
@@ -539,25 +396,6 @@ export class ReservationFlow {
     }
   }
 
-  private async backToCancha(from: string, session: Session) {
-    session.step = 'choose_cancha';
-    delete session.cancha;
-    delete session.date;
-    delete session.time;
-    delete session.availableCourtIds;
-    delete session.priceApplied;
-    delete session.currencyApplied;
-    delete session.slotApplied;
-    delete session.cutoffApplied;
-
-    await this.setSession(from, session);
-
-    await this.sendCourtPicker(
-      from,
-      `Volvimos al paso de canchas 👌\nElige la cancha${this.sportSuffix()}:`,
-    );
-  }
-
   private async backToDate(from: string, session: Session) {
     session.step = 'choose_date';
     delete session.cancha;
@@ -618,6 +456,7 @@ export class ReservationFlow {
     );
   }
 
+
   private async backToName(from: string, session: Session) {
     session.step = 'ask_name';
     await this.setSession(from, session);
@@ -655,48 +494,6 @@ export class ReservationFlow {
       from,
       `${this.sportIcon} Reserva de ${this.sportLabel}\n\n` +
         `Primero elige la fecha. Después te mostraré los horarios y las canchas disponibles para ese horario.`,
-      DATE_BTNS,
-    );
-  }
-
-  async chooseCancha(from: string, session: Session, payload: string) {
-    const num = Number(payload.split('_')[1]);
-
-    if (!Number.isFinite(num)) {
-      await this.sendCourtPicker(
-        from,
-        `No pude identificar esa cancha 😅\nElige una cancha${this.sportSuffix()} disponible.`,
-      );
-      return;
-    }
-
-    const court = await this.courtsReader.getById(num);
-
-    if (!court || !this.matchesConfiguredCourtType(court.type)) {
-      await this.sendCourtPicker(
-        from,
-        `No pude identificar esa cancha 😅\nElige una cancha${this.sportSuffix()} disponible.`,
-      );
-      return;
-    }
-
-    session.cancha = num;
-    session.amPrice = court.defaultAmPrice ?? 0;
-    session.pmPrice = court.defaultPmPrice ?? 0;
-    session.currency = court.currency ?? 'CLP';
-    session.cutoff = court.priceCutoff ?? null;
-    session.pricingSource = 'COURT_DEFAULT';
-    session.pricePreview = null;
-
-    session.step = 'choose_date';
-    await this.setSession(from, session);
-
-    await this.messenger.sendButtons(
-      from,
-      `${court.name} seleccionada ✅\n` +
-        `Tarifa AM: ${session.amPrice} ${session.currency}\n` +
-        `Tarifa PM: ${session.pmPrice} ${session.currency}\n\n` +
-        `Ahora elige la fecha para tu reserva de ${this.sportLabel}:`,
       DATE_BTNS,
     );
   }
@@ -774,17 +571,19 @@ export class ReservationFlow {
       return this.backToDate(from, session);
     }
 
-    if (!isValidHHmm(payload)) {
+    const normalizedTime = this.normalizeHourInput(payload);
+
+    if (!normalizedTime) {
       await this.messenger.sendText(
         from,
-        'No entendí la hora 😅\nEscríbela en formato **HH:mm**.\nEjemplo: 18:30',
+        'No entendí la hora 😅\nPuedes escribirla como **8**, **08:00** o **18:30**.',
       );
       return;
     }
 
     const avail = await this.getAvailableSlotsAcrossCourts(session.date);
 
-    if (!avail.includes(payload)) {
+    if (!avail.includes(normalizedTime)) {
       const shown = ymdToDmy(session.date);
 
       if (!avail.length) {
@@ -802,13 +601,13 @@ export class ReservationFlow {
         from,
         `Esa hora no está disponible para ninguna cancha.\n` +
           `Horas libres para *${shown}*: ${avail.join(', ')}\n\n` +
-          `Escribe una de esas horas en formato **HH:mm**.\n\n` +
+          `Escribe una de esas horas.\n\n` +
           `Escribe *atras* para volver.`,
       );
       return;
     }
 
-    session.time = payload;
+    session.time = normalizedTime;
     await this.sendAvailableCourtPickerForTime(from, session);
   }
 
@@ -944,12 +743,13 @@ export class ReservationFlow {
       return;
     }
 
-    const avail = await this.getAvailableSlots(
+    const result = await this.availability.getAvailableCourtsForTime(
+      this.config.courtType,
       session.date,
-      String(session.cancha),
+      session.time,
     );
 
-    if (!avail.includes(session.time)) {
+    if (!result.courts.some((court) => court.id === Number(session.cancha))) {
       session.step = 'choose_time';
       delete session.cancha;
       delete session.availableCourtIds;
@@ -964,30 +764,14 @@ export class ReservationFlow {
       return;
     }
 
-    const selectedWindow = this.resolveWindowByTime(session.time);
-    const durationMinutes = selectedWindow?.slotMinutes ?? 60;
-
-    const startEnd = makeStartEndTZ(
-      session.date,
-      session.time,
-      TZ,
-      durationMinutes,
-    );
-
-    const start = startEnd.start;
-    let end = startEnd.end;
-
-    if (selectedWindow) {
-      const windowClose = makeStartEndTZ(
-        session.date,
-        selectedWindow.close,
-        TZ,
-        0,
-      ).start;
-
-      if (end > windowClose) {
-        end = windowClose;
-      }
+    if (!result.slot) {
+      session.step = 'choose_time';
+      await this.setSession(from, session);
+      await this.messenger.sendText(
+        from,
+        'No pude calcular ese horario. Elige otra hora disponible.',
+      );
+      return;
     }
 
     try {
@@ -997,8 +781,8 @@ export class ReservationFlow {
         paymentId: null,
         paymentMethod: PaymentMethod.Pendiente,
         userId: null,
-        startTime: start.toISOString(),
-        endTime: end.toISOString(),
+        startTime: result.slot.start.toISOString(),
+        endTime: result.slot.end.toISOString(),
         status: BookingStatus.Confirmed,
         date: session.date,
         title: session.reservationName,
@@ -1013,7 +797,7 @@ export class ReservationFlow {
           `• Fecha: ${ymdToDmy(session.date)}\n` +
           `• Hora: ${session.time}\n` +
           `• Precio: ${created.priceApplied} ${created.currencyApplied ?? ''}\n\n` +
-          `Escribe **menu** para una nueva reserva o **cancelar** para salir.`,
+          `Escribe **menu** para una nueva reserva o **salir** para terminar.`,
       );
 
       await this.sessions.del(from);

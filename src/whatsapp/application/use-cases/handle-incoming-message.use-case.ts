@@ -15,7 +15,7 @@ import {
   CourtsReaderPort,
 } from '../../../courts/domain/ports/courts-reader.port';
 import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
-import { CourtBlockRepository } from '../../../events/domain/repositories/court-block.repository';
+import { CourtAvailabilityService } from '../../../courts/application/services/court-availability.service';
 import {
   FOOTBALL_RESERVATION_CONFIG,
   PADEL_RESERVATION_CONFIG,
@@ -41,28 +41,25 @@ export class HandleIncomingMessageUseCase {
     private readonly courtsReader: CourtsReaderPort,
     @Inject('CourtPricingRepository')
     private readonly pricingRepo: CourtPricingRepository,
-    @Inject('CourtBlockRepository')
-    private readonly courtBlocks: CourtBlockRepository,
+    private readonly availability: CourtAvailabilityService,
   ) {
     this.reservationPadel = new ReservationFlow(
       messenger,
       sessions,
-      bookings,
       this.createBooking,
       this.courtsReader,
       this.pricingRepo,
-      this.courtBlocks,
+      this.availability,
       PADEL_RESERVATION_CONFIG,
     );
 
     this.reservationFootball = new ReservationFlow(
       messenger,
       sessions,
-      bookings,
       this.createBooking,
       this.courtsReader,
       this.pricingRepo,
-      this.courtBlocks,
+      this.availability,
       FOOTBALL_RESERVATION_CONFIG,
     );
 
@@ -120,7 +117,6 @@ export class HandleIncomingMessageUseCase {
       ],
     );
   }
-
 
   private getReservationFlow(session: Session): ReservationFlow {
     return session.flowType === 'futbol'
@@ -224,14 +220,6 @@ export class HandleIncomingMessageUseCase {
       );
       await this.setSession(waFrom, cleanSession);
       return this.cancel.list(waFrom, cleanSession);
-    }
-
-    if (session.step === 'choose_cancha' && payload.startsWith('cancha_')) {
-      return this.getReservationFlow(session).chooseCancha(
-        waFrom,
-        session,
-        payload,
-      );
     }
 
     if (session.step === 'choose_date') {
