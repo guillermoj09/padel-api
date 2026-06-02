@@ -19,6 +19,7 @@ import {
 } from '../services/time.utils';
 import { ymdToDmy, dmyToYmd } from './helpers';
 import { CourtsReaderPort } from '../../../courts/domain/ports/courts-reader.port';
+import { Court } from '../../../courts/domain/entities/court';
 import {
   ReservationFlowConfig,
   ReservationWindow,
@@ -76,7 +77,7 @@ export class ReservationFlow {
     );
   }
 
-  private async listActiveCourts() {
+  private async listActiveCourts(): Promise<Court[]> {
     return this.courtsReader.list({
       active: true,
       limit: 50,
@@ -279,6 +280,60 @@ export class ReservationFlow {
     return blocks.flatMap((block) => block.slots);
   }
 
+  private sortSlots(slots: string[]): string[] {
+    return [...new Set(slots)].sort(
+      (a, b) => this.hhmmToMinutes(a) - this.hhmmToMinutes(b),
+    );
+  }
+
+  private async listCourtsWithAvailableSlots(
+    ymd: string,
+  ): Promise<Array<{ court: Court; slots: string[] }>> {
+    const courts = await this.listActiveCourts();
+
+    return Promise.all(
+      courts.map(async (court) => ({
+        court,
+        slots: await this.getAvailableSlots(ymd, court.id),
+      })),
+    );
+  }
+
+  private async getAvailableSlotsAcrossCourts(ymd: string): Promise<string[]> {
+    const courtsWithSlots = await this.listCourtsWithAvailableSlots(ymd);
+    return this.sortSlots(courtsWithSlots.flatMap(({ slots }) => slots));
+  }
+
+  private async getAvailableCourtsForTime(
+    ymd: string,
+    time: string,
+  ): Promise<Court[]> {
+    const courtsWithSlots = await this.listCourtsWithAvailableSlots(ymd);
+
+    return courtsWithSlots
+      .filter(({ slots }) => slots.includes(time))
+      .map(({ court }) => court);
+  }
+
+  private async buildAvailableCourtOptionsForTime(ymd: string, time: string) {
+    const courts = await this.getAvailableCourtsForTime(ymd, time);
+
+    return Promise.all(
+      courts.map(async (court) => {
+        const pricing = await this.pricingRepo.getPricingFor(court.id, ymd);
+        const slot = this.resolveSlotByCutoff(time, pricing.cutoff);
+        const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
+
+        return {
+          id: `cancha_${court.id}`,
+          title: court.name,
+          description: `Precio ${priceApplied} ${pricing.currency ?? court.currency ?? 'CLP'}`,
+          courtId: court.id,
+        };
+      }),
+    );
+  }
+
   private async sendAvailability(
     from: string,
     session: Session,
@@ -322,10 +377,143 @@ export class ReservationFlow {
     );
   }
 
+  private async sendAvailabilityAcrossCourts(
+    from: string,
+    session: Session,
+    ymd: string,
+  ) {
+    const courtsWithSlots = await this.listCourtsWithAvailableSlots(ymd);
+    const slots = this.sortSlots(courtsWithSlots.flatMap(({ slots }) => slots));
+    const shown = ymdToDmy(ymd);
+
+    if (!courtsWithSlots.length) {
+      await this.messenger.sendText(
+        from,
+        `No hay canchas${this.sportSuffix()} activas disponibles en este momento.`,
+      );
+      return;
+    }
+
+    if (!slots.length) {
+      session.step = 'awaiting_other_date';
+      await this.setSession(from, session);
+
+      await this.messenger.sendText(
+        from,
+        `😕 No hay horarios disponibles para *${shown}*.\n\n` +
+          `Escribe *mañana* o una nueva fecha en formato *DD-MM-AAAA*.\n` +
+          `Ejemplo: *25-03-2026*`,
+      );
+      return;
+    }
+
+    const blockTexts = this.config.windows.map((window) => {
+      const blockSlots = slots.filter((slot) => {
+        const mins = this.hhmmToMinutes(slot);
+        return (
+          mins >= this.hhmmToMinutes(window.open) &&
+          mins < this.hhmmToMinutes(window.close)
+        );
+      });
+
+      if (!blockSlots.length) {
+        return `${window.emoji} *${window.label}:*\n• Sin horarios disponibles`;
+      }
+
+      return `${window.emoji} *${window.label}:*\n${blockSlots
+        .map((h) => `• ${h}`)
+        .join('\n')}`;
+    });
+
+    await this.messenger.sendText(
+      from,
+      `📅 *Fecha seleccionada:* ${shown}\n\n` +
+        `${blockTexts.join('\n\n')}\n\n` +
+        `Estos horarios tienen al menos una cancha disponible.\n` +
+        `Escribe la hora que quieres reservar en formato *HH:mm*.\n` +
+        `Ejemplo: *18:30*\n\n` +
+        `Escribe *atras* para volver.`,
+    );
+  }
+
+  private async sendAvailableCourtPickerForTime(
+    from: string,
+    session: Session,
+    body?: string,
+  ) {
+    if (!session.date || !session.time) {
+      return this.backToDate(from, session);
+    }
+
+    const options = await this.buildAvailableCourtOptionsForTime(
+      session.date,
+      session.time,
+    );
+
+    if (!options.length) {
+      session.step = 'choose_time';
+      delete session.cancha;
+      delete session.availableCourtIds;
+      await this.setSession(from, session);
+
+      const avail = await this.getAvailableSlotsAcrossCourts(session.date);
+      const shown = ymdToDmy(session.date);
+
+      await this.messenger.sendText(
+        from,
+        `Ese horario ya no tiene canchas disponibles para *${shown}*.\n` +
+          `Horas disponibles: ${avail.join(', ') || 'sin horarios'}\n\n` +
+          `Elige otra hora en formato *HH:mm*.\n\n` +
+          `Escribe *atras* para volver.`,
+      );
+      return;
+    }
+
+    session.step = 'choose_court_for_time';
+    session.availableCourtIds = options.map((option) => option.courtId);
+    delete session.cancha;
+    delete session.priceApplied;
+    delete session.currencyApplied;
+    delete session.slotApplied;
+    delete session.cutoffApplied;
+    await this.setSession(from, session);
+
+    const message =
+      body ??
+      `🕒 Hora seleccionada: *${session.time}*\n\n` +
+        `Estas canchas están disponibles para ese horario:`;
+
+    if (options.length <= 3 || !this.messenger.sendList) {
+      await this.messenger.sendButtons(
+        from,
+        `${message}\n\nElige una cancha.`,
+        options.slice(0, 3).map(({ id, title }) => ({ id, title })),
+      );
+      return;
+    }
+
+    await this.messenger.sendList(from, {
+      header: `${this.sportIcon} Canchas disponibles`,
+      body: `${message}\n\nElige una cancha.`,
+      footer: 'Solo se muestran canchas libres para esa fecha y hora.',
+      buttonText: 'Ver canchas',
+      sections: [
+        {
+          title: `Disponibles ${session.time}`,
+          rows: options.slice(0, 10),
+        },
+      ],
+    });
+  }
+
   async goBack(from: string, session: Session) {
     switch (session.step) {
       case 'choose_date':
-        return this.backToCancha(from, session);
+        await this.messenger.sendText(
+          from,
+          'Ya estás en el primer paso de la reserva.\nEscribe *menu* para volver al menú principal.',
+        );
+        return;
 
       case 'awaiting_other_date':
         return this.backToDate(from, session);
@@ -333,8 +521,11 @@ export class ReservationFlow {
       case 'choose_time':
         return this.backToDate(from, session);
 
-      case 'ask_name':
+      case 'choose_court_for_time':
         return this.backToTime(from, session);
+
+      case 'ask_name':
+        return this.backToCourtForTime(from, session);
 
       case 'confirm_booking':
         return this.backToName(from, session);
@@ -353,6 +544,7 @@ export class ReservationFlow {
     delete session.cancha;
     delete session.date;
     delete session.time;
+    delete session.availableCourtIds;
     delete session.priceApplied;
     delete session.currencyApplied;
     delete session.slotApplied;
@@ -368,8 +560,10 @@ export class ReservationFlow {
 
   private async backToDate(from: string, session: Session) {
     session.step = 'choose_date';
+    delete session.cancha;
     delete session.date;
     delete session.time;
+    delete session.availableCourtIds;
     delete session.priceApplied;
     delete session.currencyApplied;
     delete session.slotApplied;
@@ -385,12 +579,14 @@ export class ReservationFlow {
   }
 
   private async backToTime(from: string, session: Session) {
-    if (!session.date || !session.cancha) {
+    if (!session.date) {
       return this.backToDate(from, session);
     }
 
     session.step = 'choose_time';
     delete session.time;
+    delete session.cancha;
+    delete session.availableCourtIds;
     delete session.priceApplied;
     delete session.currencyApplied;
     delete session.slotApplied;
@@ -399,11 +595,26 @@ export class ReservationFlow {
 
     await this.setSession(from, session);
 
-    await this.sendAvailability(
+    await this.sendAvailabilityAcrossCourts(from, session, session.date);
+  }
+
+  private async backToCourtForTime(from: string, session: Session) {
+    if (!session.date || !session.time) {
+      return this.backToTime(from, session);
+    }
+
+    delete session.cancha;
+    delete session.priceApplied;
+    delete session.currencyApplied;
+    delete session.slotApplied;
+    delete session.cutoffApplied;
+    delete session.reservationName;
+
+    await this.sendAvailableCourtPickerForTime(
       from,
       session,
-      session.date,
-      String(session.cancha),
+      `Volvimos al paso de canchas 👌\n` +
+        `Estas canchas están disponibles para *${session.time}*:`,
     );
   }
 
@@ -418,9 +629,9 @@ export class ReservationFlow {
   }
 
   async start(from: string, session: Session) {
-    const options = await this.buildCourtOptions();
+    const courts = await this.listActiveCourts();
 
-    if (!options.length) {
+    if (!courts.length) {
       await this.messenger.sendText(
         from,
         `No hay canchas${this.sportSuffix()} activas disponibles en este momento.`,
@@ -428,13 +639,23 @@ export class ReservationFlow {
       return;
     }
 
-    session.step = 'choose_cancha';
+    session.step = 'choose_date';
     session.flowType = this.config.flowKey;
+    delete session.cancha;
+    delete session.date;
+    delete session.time;
+    delete session.availableCourtIds;
+    delete session.priceApplied;
+    delete session.currencyApplied;
+    delete session.slotApplied;
+    delete session.cutoffApplied;
     await this.setSession(from, session);
 
-    await this.sendCourtPicker(
+    await this.messenger.sendButtons(
       from,
-      `${this.sportIcon} Elige la cancha${this.sportSuffix()}:`,
+      `${this.sportIcon} Reserva de ${this.sportLabel}\n\n` +
+        `Primero elige la fecha. Después te mostraré los horarios y las canchas disponibles para ese horario.`,
+      DATE_BTNS,
     );
   }
 
@@ -503,13 +724,10 @@ export class ReservationFlow {
     }
 
     session.step = 'choose_time';
+    delete session.cancha;
+    delete session.availableCourtIds;
     await this.setSession(from, session);
-    await this.sendAvailability(
-      from,
-      session,
-      session.date,
-      String(session.cancha!),
-    );
+    await this.sendAvailabilityAcrossCourts(from, session, session.date);
   }
 
   async awaitingOtherDate(from: string, session: Session, payload: string) {
@@ -518,13 +736,10 @@ export class ReservationFlow {
     if (p === 'mañana' || p === 'manana') {
       session.date = localTomorrowYMD();
       session.step = 'choose_time';
+      delete session.cancha;
+      delete session.availableCourtIds;
       await this.setSession(from, session);
-      await this.sendAvailability(
-        from,
-        session,
-        session.date,
-        String(session.cancha!),
-      );
+      await this.sendAvailabilityAcrossCourts(from, session, session.date);
       return;
     }
 
@@ -548,16 +763,17 @@ export class ReservationFlow {
 
     session.date = parsedYmd;
     session.step = 'choose_time';
+    delete session.cancha;
+    delete session.availableCourtIds;
     await this.setSession(from, session);
-    await this.sendAvailability(
-      from,
-      session,
-      session.date,
-      String(session.cancha!),
-    );
+    await this.sendAvailabilityAcrossCourts(from, session, session.date);
   }
 
   async chooseTime(from: string, session: Session, payload: string) {
+    if (!session.date) {
+      return this.backToDate(from, session);
+    }
+
     if (!isValidHHmm(payload)) {
       await this.messenger.sendText(
         from,
@@ -566,13 +782,10 @@ export class ReservationFlow {
       return;
     }
 
-    const avail = await this.getAvailableSlots(
-      session.date!,
-      String(session.cancha!),
-    );
+    const avail = await this.getAvailableSlotsAcrossCourts(session.date);
 
     if (!avail.includes(payload)) {
-      const shown = ymdToDmy(session.date!);
+      const shown = ymdToDmy(session.date);
 
       if (!avail.length) {
         session.step = 'awaiting_other_date';
@@ -587,12 +800,72 @@ export class ReservationFlow {
 
       await this.messenger.sendText(
         from,
-        `Esa hora ya no está disponible.\nHoras libres para *${shown}*: ${avail.join(', ')}\n\nEscribe una de esas horas en formato **HH:mm**.\n\nEscribe *atras* para volver.`,
+        `Esa hora no está disponible para ninguna cancha.\n` +
+          `Horas libres para *${shown}*: ${avail.join(', ')}\n\n` +
+          `Escribe una de esas horas en formato **HH:mm**.\n\n` +
+          `Escribe *atras* para volver.`,
       );
       return;
     }
 
     session.time = payload;
+    await this.sendAvailableCourtPickerForTime(from, session);
+  }
+
+  async chooseCourtForTime(from: string, session: Session, payload: string) {
+    if (!session.date || !session.time) {
+      return this.backToDate(from, session);
+    }
+
+    const num = Number(payload.split('_')[1]);
+
+    if (!Number.isFinite(num)) {
+      await this.sendAvailableCourtPickerForTime(
+        from,
+        session,
+        `No pude identificar esa cancha 😅\n` +
+          `Elige una cancha disponible para *${session.time}*.`,
+      );
+      return;
+    }
+
+    const availableCourts = await this.getAvailableCourtsForTime(
+      session.date,
+      session.time,
+    );
+    const availableIds = availableCourts.map((court) => court.id);
+
+    if (!availableIds.includes(num)) {
+      session.availableCourtIds = availableIds;
+      await this.setSession(from, session);
+      await this.sendAvailableCourtPickerForTime(
+        from,
+        session,
+        `Esa cancha ya no está disponible para *${session.time}*.\n` +
+          `Elige una de las canchas que siguen libres:`,
+      );
+      return;
+    }
+
+    const court = availableCourts.find((item) => item.id === num);
+
+    if (!court || !this.matchesConfiguredCourtType(court.type)) {
+      await this.sendAvailableCourtPickerForTime(
+        from,
+        session,
+        `No pude identificar esa cancha 😅\n` +
+          `Elige una cancha disponible para *${session.time}*.`,
+      );
+      return;
+    }
+
+    session.cancha = num;
+    session.amPrice = court.defaultAmPrice ?? 0;
+    session.pmPrice = court.defaultPmPrice ?? 0;
+    session.currency = court.currency ?? 'CLP';
+    session.cutoff = court.priceCutoff ?? null;
+    session.pricingSource = 'COURT_DEFAULT';
+    session.pricePreview = null;
     await this.fillPricePreview(session);
 
     if (session.reservationName) {
@@ -600,7 +873,11 @@ export class ReservationFlow {
       await this.setSession(from, session);
       await this.messenger.sendText(
         from,
-        `Tengo este nombre guardado: *${session.reservationName}*.\nEscribe **mismo** para usarlo o envía un nombre nuevo.\n\nEscribe *atras* para volver.`,
+        `${court.name} seleccionada ✅\n` +
+          `Precio: ${this.getSessionPriceText(session)}\n\n` +
+          `Tengo este nombre guardado: *${session.reservationName}*.\n` +
+          `Escribe **mismo** para usarlo o envía un nombre nuevo.\n\n` +
+          `Escribe *atras* para volver.`,
       );
       return;
     }
@@ -609,7 +886,10 @@ export class ReservationFlow {
     await this.setSession(from, session);
     await this.messenger.sendText(
       from,
-      '¿A nombre de quién va la reserva? ✍️\n\nEscribe *atras* para volver.',
+      `${court.name} seleccionada ✅\n` +
+        `Precio: ${this.getSessionPriceText(session)}\n\n` +
+        `¿A nombre de quién va la reserva? ✍️\n\n` +
+        `Escribe *atras* para volver.`,
     );
   }
 
@@ -670,24 +950,45 @@ export class ReservationFlow {
     );
 
     if (!avail.includes(session.time)) {
+      session.step = 'choose_time';
+      delete session.cancha;
+      delete session.availableCourtIds;
+      await this.setSession(from, session);
+
       await this.messenger.sendText(
         from,
-        `⚠️ Ese horario ya no está disponible.\nDisponibles: ${avail.join(', ') || 'sin horarios'}\n\nElige otra hora en formato **HH:mm**.`,
+        `⚠️ Ese horario ya no está disponible para la cancha seleccionada.\n` +
+          `Elige otra hora o vuelve a seleccionar una cancha.`,
       );
-      session.step = 'choose_time';
-      await this.setSession(from, session);
+      await this.sendAvailabilityAcrossCourts(from, session, session.date);
       return;
     }
 
     const selectedWindow = this.resolveWindowByTime(session.time);
     const durationMinutes = selectedWindow?.slotMinutes ?? 60;
 
-    const { start, end } = makeStartEndTZ(
+    const startEnd = makeStartEndTZ(
       session.date,
       session.time,
       TZ,
       durationMinutes,
     );
+
+    const start = startEnd.start;
+    let end = startEnd.end;
+
+    if (selectedWindow) {
+      const windowClose = makeStartEndTZ(
+        session.date,
+        selectedWindow.close,
+        TZ,
+        0,
+      ).start;
+
+      if (end > windowClose) {
+        end = windowClose;
+      }
+    }
 
     try {
       const created = await this.createBooking.execute({
@@ -727,6 +1028,8 @@ export class ReservationFlow {
           }\n\nElige otra hora o cambia la fecha.`,
         );
         session.step = 'choose_time';
+        delete session.cancha;
+        delete session.availableCourtIds;
         await this.setSession(from, session);
         return;
       }
@@ -740,6 +1043,8 @@ export class ReservationFlow {
           `⚠️ Ese horario ya está reservado.\nElige otra hora disponible.`,
         );
         session.step = 'choose_time';
+        delete session.cancha;
+        delete session.availableCourtIds;
         await this.setSession(from, session);
         return;
       }

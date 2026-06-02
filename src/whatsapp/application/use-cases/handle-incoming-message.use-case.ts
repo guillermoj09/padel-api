@@ -134,7 +134,27 @@ export class HandleIncomingMessageUseCase {
     const p = payload.toLowerCase();
     const session = await this.getSession(waFrom);
 
-    if (['cancel', 'cancelar', 'salir'].includes(p)) {
+    const wantsToCancelReservation = [
+      'cancelar',
+      'cancelar reserva',
+      'mis reservas',
+      'anular reserva',
+    ].includes(p);
+
+    if (session.step === 'idle' && wantsToCancelReservation) {
+      const cleanSession = await this.ensureContact(
+        waFrom,
+        this.buildCleanSession(session),
+      );
+      await this.setSession(waFrom, cleanSession);
+      return this.cancel.list(waFrom, cleanSession);
+    }
+
+    if (
+      p === 'salir' ||
+      p === 'cancel' ||
+      (p === 'cancelar' && session.step !== 'idle')
+    ) {
       await this.sessions.del(waFrom);
       await this.messenger.sendText(waFrom, 'Flujo cancelado. Escribe "menu".');
       return;
@@ -147,6 +167,7 @@ export class HandleIncomingMessageUseCase {
           'choose_date',
           'awaiting_other_date',
           'choose_time',
+          'choose_court_for_time',
           'ask_name',
           'confirm_booking',
         ].includes(session.step)
@@ -206,11 +227,19 @@ export class HandleIncomingMessageUseCase {
     }
 
     if (session.step === 'choose_cancha' && payload.startsWith('cancha_')) {
-      return this.getReservationFlow(session).chooseCancha(waFrom, session, payload);
+      return this.getReservationFlow(session).chooseCancha(
+        waFrom,
+        session,
+        payload,
+      );
     }
 
     if (session.step === 'choose_date') {
-      return this.getReservationFlow(session).chooseDate(waFrom, session, payload);
+      return this.getReservationFlow(session).chooseDate(
+        waFrom,
+        session,
+        payload,
+      );
     }
 
     if (session.step === 'awaiting_other_date') {
@@ -222,7 +251,30 @@ export class HandleIncomingMessageUseCase {
     }
 
     if (session.step === 'choose_time') {
-      return this.getReservationFlow(session).chooseTime(waFrom, session, payload);
+      return this.getReservationFlow(session).chooseTime(
+        waFrom,
+        session,
+        payload,
+      );
+    }
+
+    if (
+      session.step === 'choose_court_for_time' &&
+      payload.startsWith('cancha_')
+    ) {
+      return this.getReservationFlow(session).chooseCourtForTime(
+        waFrom,
+        session,
+        payload,
+      );
+    }
+
+    if (session.step === 'choose_court_for_time') {
+      await this.messenger.sendText(
+        waFrom,
+        'Elige una cancha de la lista o escribe *atras* para volver a los horarios.',
+      );
+      return;
     }
 
     if (session.step === 'ask_name') {

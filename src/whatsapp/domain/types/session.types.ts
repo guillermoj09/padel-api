@@ -4,6 +4,7 @@ export type Step =
   | 'choose_date'
   | 'awaiting_other_date'
   | 'choose_time'
+  | 'choose_court_for_time'
   | 'ask_name'
   | 'confirm_booking'
   | 'cancel_choose'
@@ -21,6 +22,7 @@ export type Session = {
   bookingIdToCancel?: string;
   cancelOptions?: string[];
   reservationName?: string;
+  availableCourtIds?: number[];
 
   amPrice?: number;
   pmPrice?: number;
