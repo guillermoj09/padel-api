@@ -30,6 +30,15 @@ export class GetCourtCalendarUseCase {
         resourceId: String(booking.courtId),
         type: 'booking',
         phoneNumber: phoneNumber ?? null,
+        paymentMethod: booking.paymentMethod ?? null,
+        paymentStatus: booking.paymentStatus ?? null,
+        paidAt: booking.paidAt ?? null,
+        paymentConfirmedBy: booking.paymentConfirmedBy ?? null,
+        priceApplied: booking.priceApplied ?? null,
+        currencyApplied: booking.currencyApplied ?? 'CLP',
+        slotApplied: booking.slotApplied ?? null,
+        pricingSource: booking.pricingSource ?? null,
+        cutoffApplied: booking.cutoffApplied ?? null,
         raw: bookingRaw,
       };
     });

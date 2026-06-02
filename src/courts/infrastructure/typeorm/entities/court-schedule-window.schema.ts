@@ -28,6 +28,9 @@ export class CourtScheduleWindowSchema {
   @Column({ type: 'int', name: 'slot_minutes', default: 60 })
   slotMinutes!: number;
 
+  @Column({ type: 'varchar', length: 2, name: 'price_slot', default: 'AM' })
+  priceSlot!: 'AM' | 'PM';
+
   @Column({ type: 'int', name: 'sort_order', default: 0 })
   sortOrder!: number;
 

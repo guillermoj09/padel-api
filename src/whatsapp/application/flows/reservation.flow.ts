@@ -149,18 +149,24 @@ export class ReservationFlow {
   }
 
   private async buildAvailableCourtOptionsForTime(ymd: string, time: string) {
-    const courts = await this.getAvailableCourtsForTime(ymd, time);
+    const result = await this.availability.getAvailableCourtsForTime(
+      this.config.courtType,
+      ymd,
+      time,
+    );
+    const priceSlotFromWindow = result.window?.priceSlot ?? null;
 
     return Promise.all(
-      courts.map(async (court) => {
+      result.courts.map(async (court) => {
         const pricing = await this.pricingRepo.getPricingFor(court.id, ymd);
-        const slot = this.resolveSlotByCutoff(time, pricing.cutoff);
+        const slot =
+          priceSlotFromWindow ?? this.resolveSlotByCutoff(time, pricing.cutoff);
         const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
 
         return {
           id: `cancha_${court.id}`,
           title: court.name,
-          description: `Precio ${priceApplied} ${pricing.currency ?? court.currency ?? 'CLP'}`,
+          description: `Precio ${slot} ${priceApplied} ${pricing.currency ?? court.currency ?? 'CLP'}`,
           courtId: court.id,
         };
       }),
@@ -174,15 +180,20 @@ export class ReservationFlow {
       Number(session.cancha),
       session.date,
     );
+    const window = await this.availability.resolveWindowByTime(
+      this.config.courtType,
+      session.time,
+    );
 
-    const slot = this.resolveSlotByCutoff(session.time, pricing.cutoff);
+    const slot =
+      window?.priceSlot ?? this.resolveSlotByCutoff(session.time, pricing.cutoff);
     const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
 
     session.priceApplied = priceApplied;
     session.currencyApplied = pricing.currency;
     session.pricingSource = pricing.source;
     session.slotApplied = slot;
-    session.cutoffApplied = pricing.cutoff;
+    session.cutoffApplied = window?.priceSlot ? null : pricing.cutoff;
   }
 
   private getSessionPriceText(session: Session): string {
@@ -274,10 +285,10 @@ export class ReservationFlow {
       const emoji = window.emoji ?? '🕒';
 
       if (!blockSlots.length) {
-        return `${emoji} *${window.label}:*\n• Sin horarios disponibles`;
+        return `${emoji} *${window.label}* · Tarifa ${window.priceSlot}:\n• Sin horarios disponibles`;
       }
 
-      return `${emoji} *${window.label}:*\n${blockSlots
+      return `${emoji} *${window.label}* · Tarifa ${window.priceSlot}:\n${blockSlots
         .map((slot) => `• ${slot.time}`)
         .join('\n')}`;
     });

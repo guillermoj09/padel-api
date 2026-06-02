@@ -17,6 +17,7 @@ export class CourtScheduleSeederService implements OnModuleInit {
         openTime: '07:00',
         closeTime: '13:00',
         slotMinutes: 90,
+        priceSlot: 'AM',
         sortOrder: 1,
       },
       {
@@ -26,6 +27,7 @@ export class CourtScheduleSeederService implements OnModuleInit {
         openTime: '17:00',
         closeTime: '23:00',
         slotMinutes: 90,
+        priceSlot: 'PM',
         sortOrder: 2,
       },
     ]);
@@ -38,6 +40,7 @@ export class CourtScheduleSeederService implements OnModuleInit {
         openTime: '08:00',
         closeTime: '15:00',
         slotMinutes: 60,
+        priceSlot: 'AM',
         sortOrder: 1,
       },
       {
@@ -47,6 +50,7 @@ export class CourtScheduleSeederService implements OnModuleInit {
         openTime: '17:00',
         closeTime: '23:59',
         slotMinutes: 60,
+        priceSlot: 'PM',
         sortOrder: 2,
       },
     ]);

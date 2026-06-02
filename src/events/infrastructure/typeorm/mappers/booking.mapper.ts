@@ -142,6 +142,31 @@ export class BookingMapper {
       (schema as any).contact?.wa_phone ??
       null;
 
+    const priceApplied = pick<number>(
+      (schema as any).priceApplied,
+      (schema as any).price_applied,
+    );
+
+    const currencyApplied = pick<string>(
+      (schema as any).currencyApplied,
+      (schema as any).currency_applied,
+    );
+
+    const slotApplied = pick<'AM' | 'PM'>(
+      (schema as any).slotApplied,
+      (schema as any).slot_applied,
+    );
+
+    const pricingSource = pick<'DAILY' | 'RATE_CARD'>(
+      (schema as any).pricingSource,
+      (schema as any).pricing_source,
+    );
+
+    const cutoffApplied = pick<string>(
+      (schema as any).cutoffApplied,
+      (schema as any).cutoff_applied,
+    );
+
     return {
       id: (schema as any).id,
       userId: userId ?? null,
@@ -165,6 +190,11 @@ export class BookingMapper {
       cancelReason: cancelReason ?? undefined,
       canceledBy: canceledBy ?? undefined,
       title,
+      priceApplied: priceApplied ?? null,
+      currencyApplied: currencyApplied ?? null,
+      slotApplied: slotApplied ?? null,
+      pricingSource: pricingSource ?? null,
+      cutoffApplied: cutoffApplied ?? null,
     };
   }
 
@@ -189,6 +219,11 @@ export class BookingMapper {
       status: domain.status as any,
       date: domain.date as any,
       title: (domain as any).title ?? undefined,
+      priceApplied: (domain as any).priceApplied ?? null,
+      currencyApplied: (domain as any).currencyApplied ?? null,
+      slotApplied: (domain as any).slotApplied ?? null,
+      pricingSource: (domain as any).pricingSource ?? null,
+      cutoffApplied: (domain as any).cutoffApplied ?? null,
     };
 
     return partial;

@@ -12,6 +12,9 @@ import { mapPricingSource } from '../mappers/pricing-source.mapper';
 import { CourtPricingRepository } from '../../domain/repositories/court-pricing.repository';
 import { CourtBlockRepository } from '../../domain/repositories/court-block.repository';
 import { getLocalDateTimeParts } from 'src/common/utils/local-date.util';
+import { CourtScheduleWindow } from 'src/courts/domain/entities/court-schedule-window';
+import { CourtScheduleWindowRepository } from 'src/courts/domain/repositories/court-schedule-window.repository';
+import { ContactsRepository } from '../../domain/repositories/contacts.repository';
 
 function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -28,6 +31,32 @@ function slotByCutoff(hhmm: string, cutoff: string | null | undefined) {
   return mins < hhmmToMinutes(cutoff) ? ('AM' as const) : ('PM' as const);
 }
 
+function normalizePhoneToE164(raw?: string | null): string | null {
+  const value = String(raw ?? '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  const withoutWhatsappPrefix = value.replace(/^whatsapp:/i, '').trim();
+  const digitsOrPlus = withoutWhatsappPrefix.replace(/[^0-9+]/g, '');
+
+  if (!digitsOrPlus) {
+    return null;
+  }
+
+  if (digitsOrPlus.startsWith('+')) {
+    return digitsOrPlus;
+  }
+
+  return `+${digitsOrPlus}`;
+}
+
+type ScheduleWindowResult = {
+  hasConfiguredWindows: boolean;
+  window: CourtScheduleWindow | null;
+};
+
 @Injectable()
 export class CreateBookingUseCase {
   constructor(
@@ -36,6 +65,10 @@ export class CreateBookingUseCase {
     private readonly pricingRepo: CourtPricingRepository,
     @Inject('CourtBlockRepository')
     private readonly blocksRepo: CourtBlockRepository,
+    @Inject('CourtScheduleWindowRepository')
+    private readonly scheduleWindows: CourtScheduleWindowRepository,
+    @Inject('ContactsRepository')
+    private readonly contacts: ContactsRepository,
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<Booking> {
@@ -92,21 +125,48 @@ export class CreateBookingUseCase {
       bookingYmd,
     );
 
+    const schedule = await this.resolveScheduleWindowForTime(
+      pricingRaw.courtType,
+      startLocal.hhmm,
+    );
+
     const cutoff = pricingRaw.cutoff ?? null;
+    let slot: 'AM' | 'PM';
+    let cutoffApplied: string | null = cutoff;
 
-    if (cutoff) {
-      const cutMin = hhmmToMinutes(cutoff);
-      const sMin = startLocal.minutes;
-      const eMin = endLocal.minutes;
-
-      if (sMin < cutMin && eMin > cutMin) {
+    if (schedule.hasConfiguredWindows) {
+      if (!schedule.window) {
         throw new ConflictException(
-          'La reserva cruza el cambio de tarifa (cutoff).',
+          'El horario no está dentro de los bloques configurados para esta cancha.',
         );
       }
+
+      const closeMinutes = hhmmToMinutes(schedule.window.closeTime);
+
+      if (endLocal.minutes > closeMinutes) {
+        throw new ConflictException(
+          'La reserva supera el cierre del bloque horario configurado.',
+        );
+      }
+
+      slot = schedule.window.priceSlot;
+      cutoffApplied = null;
+    } else {
+      if (cutoff) {
+        const cutMin = hhmmToMinutes(cutoff);
+        const sMin = startLocal.minutes;
+        const eMin = endLocal.minutes;
+
+        if (sMin < cutMin && eMin > cutMin) {
+          throw new ConflictException(
+            'La reserva cruza el cambio de tarifa (cutoff).',
+          );
+        }
+      }
+
+      slot = slotByCutoff(startLocal.hhmm, cutoff);
     }
 
-    const slot = slotByCutoff(startLocal.hhmm, cutoff);
     const priceApplied =
       slot === 'AM' ? pricingRaw.amPrice : pricingRaw.pmPrice;
 
@@ -121,8 +181,10 @@ export class CreateBookingUseCase {
       currency: pricingRaw.currency,
       slot,
       source: pricingRaw.source,
-      cutoff,
+      cutoff: cutoffApplied,
     };
+
+    const contactId = await this.resolveContactId(dto);
 
     const toCreate: Omit<Booking, 'id'> = {
       userId: dto.userId ?? null,
@@ -136,7 +198,7 @@ export class CreateBookingUseCase {
       endTime: end,
       date: bookingYmd,
       status: dto.status ?? BookingStatus.Confirmed,
-      contactId: dto.contactId ?? undefined,
+      contactId,
       title: dto.title ?? null,
       priceApplied: pricing.price,
       currencyApplied: pricing.currency,
@@ -146,5 +208,48 @@ export class CreateBookingUseCase {
     };
 
     return this.repo.create(toCreate);
+  }
+
+  private async resolveContactId(
+    dto: CreateBookingDto,
+  ): Promise<string | undefined> {
+    if (dto.contactId) {
+      return dto.contactId;
+    }
+
+    const phoneNumber = normalizePhoneToE164(dto.phoneNumber);
+
+    if (!phoneNumber) {
+      return undefined;
+    }
+
+    const contact = await this.contacts.findOrCreateByWaPhone(
+      phoneNumber,
+      dto.title ?? null,
+      'America/Santiago',
+    );
+
+    return contact.id;
+  }
+
+  private async resolveScheduleWindowForTime(
+    courtType: string,
+    hhmm: string,
+  ): Promise<ScheduleWindowResult> {
+    const windows = await this.scheduleWindows.findActiveByCourtType(courtType);
+
+    if (!windows.length) {
+      return { hasConfiguredWindows: false, window: null };
+    }
+
+    const minutes = hhmmToMinutes(hhmm);
+    const window =
+      windows.find((item) => {
+        const open = hhmmToMinutes(item.openTime);
+        const close = hhmmToMinutes(item.closeTime);
+        return minutes >= open && minutes < close;
+      }) ?? null;
+
+    return { hasConfiguredWindows: true, window };
   }
 }

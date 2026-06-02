@@ -1,4 +1,4 @@
-import { CourtScheduleWindow } from '../entities/court-schedule-window';
+import { CourtScheduleWindow, PriceSlot } from '../entities/court-schedule-window';
 
 export type CreateCourtScheduleWindowInput = {
   courtType: string;
@@ -7,6 +7,7 @@ export type CreateCourtScheduleWindowInput = {
   openTime: string;
   closeTime: string;
   slotMinutes: number;
+  priceSlot?: PriceSlot;
   sortOrder?: number;
   active?: boolean;
 };

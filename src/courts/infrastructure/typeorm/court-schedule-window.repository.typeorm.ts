@@ -50,6 +50,7 @@ export class CourtScheduleWindowRepositoryTypeorm
         openTime: item.openTime,
         closeTime: item.closeTime,
         slotMinutes: item.slotMinutes,
+        priceSlot: item.priceSlot ?? 'AM',
         sortOrder: item.sortOrder ?? 0,
         active: item.active ?? true,
       }),
@@ -68,6 +69,7 @@ export class CourtScheduleWindowRepositoryTypeorm
       row.openTime,
       row.closeTime,
       row.slotMinutes,
+      row.priceSlot,
       row.sortOrder,
       row.active,
     );

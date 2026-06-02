@@ -1,3 +1,5 @@
+export type PriceSlot = 'AM' | 'PM';
+
 export class CourtScheduleWindow {
   constructor(
     public readonly id: number,
@@ -7,6 +9,7 @@ export class CourtScheduleWindow {
     public readonly openTime: string,
     public readonly closeTime: string,
     public readonly slotMinutes: number,
+    public readonly priceSlot: PriceSlot,
     public readonly sortOrder: number,
     public readonly active: boolean,
   ) {}

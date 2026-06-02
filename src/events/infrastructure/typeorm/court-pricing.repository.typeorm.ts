@@ -28,6 +28,7 @@ export class CourtPricingRepositoryTypeorm implements CourtPricingRepository {
         pmPrice: daily.pmPrice,
         currency: daily.currency ?? court.currency ?? 'CLP',
         cutoff: court.priceCutoff ?? null, // ✅ rename
+        courtType: court.type,
         source: 'DAILY' as const,
       };
     }
@@ -37,6 +38,7 @@ export class CourtPricingRepositoryTypeorm implements CourtPricingRepository {
       pmPrice: court.defaultPmPrice,
       currency: court.currency ?? 'CLP',
       cutoff: court.priceCutoff ?? null, // ✅ rename
+      courtType: court.type,
       source: 'COURT_DEFAULT' as const,
     };
   }

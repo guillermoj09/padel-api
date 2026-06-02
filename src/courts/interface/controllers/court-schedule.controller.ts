@@ -17,6 +17,7 @@ export class CourtScheduleController {
       openTime: window.openTime,
       closeTime: window.closeTime,
       slotMinutes: window.slotMinutes,
+      priceSlot: window.priceSlot,
       sortOrder: window.sortOrder,
       active: window.active,
     }));

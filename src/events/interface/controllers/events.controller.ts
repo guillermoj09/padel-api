@@ -101,6 +101,7 @@ export class BookingController {
       status: dto.status as BookingStatus,
       title: dto.title,
       contactId: dto.contactId ?? null,
+      phoneNumber: dto.phoneNumber ?? null,
       date: nowYMD(),
     };
 

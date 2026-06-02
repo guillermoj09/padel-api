@@ -14,6 +14,8 @@ import { GetCourtReservationsByDateRangeAndStatus } from './application/use-case
 import { CourtPricingRepositoryTypeorm } from './infrastructure/typeorm/court-pricing.repository.typeorm';
 import { CourtSchema } from 'src/courts/infrastructure/typeorm/entities/court.schema';
 import { CourtDailyRateSchema } from 'src/courts/infrastructure/typeorm/entities/court-daily-rate.schema';
+import { CourtScheduleWindowSchema } from 'src/courts/infrastructure/typeorm/entities/court-schedule-window.schema';
+import { CourtScheduleWindowRepositoryTypeorm } from 'src/courts/infrastructure/typeorm/court-schedule-window.repository.typeorm';
 import { ConfirmBookingPaymentUseCase } from './application/use-cases/confirm-booking-payment.use-case';
 import { CourtBlockSchema } from './infrastructure/typeorm/entities/court-block.schema';
 import { TypeOrmCourtBlockRepository } from './infrastructure/typeorm/court-block.repository.typeorm';
@@ -30,6 +32,7 @@ import { GetCourtCalendarUseCase } from './application/use-cases/get-court-calen
       ContactSchema,
       CourtSchema,
       CourtDailyRateSchema,
+      CourtScheduleWindowSchema,
       CourtBlockSchema,
     ]),
   ],
@@ -59,6 +62,11 @@ import { GetCourtCalendarUseCase } from './application/use-cases/get-court-calen
     ContactsRepositoryTypeorm,
     { provide: 'ContactsRepository', useExisting: ContactsRepositoryTypeorm },
     CourtPricingRepositoryTypeorm,
+    CourtScheduleWindowRepositoryTypeorm,
+    {
+      provide: 'CourtScheduleWindowRepository',
+      useClass: CourtScheduleWindowRepositoryTypeorm,
+    },
     {
       provide: 'CourtPricingRepository',
       useClass: CourtPricingRepositoryTypeorm,
@@ -74,6 +82,7 @@ import { GetCourtCalendarUseCase } from './application/use-cases/get-court-calen
     'CourtBlockRepository',
     'ContactsRepository',
     'CourtPricingRepository',
+    'CourtScheduleWindowRepository',
   ],
 })
 export class BookingsModule {}

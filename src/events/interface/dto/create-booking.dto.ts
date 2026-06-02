@@ -44,4 +44,8 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   contactId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string | null;
 }

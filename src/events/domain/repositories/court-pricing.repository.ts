@@ -7,6 +7,7 @@ export interface CourtPricingRepository {
     pmPrice: number;
     currency: string;
     cutoff: string | null;
+    courtType: string;
     source: 'DAILY' | 'COURT_DEFAULT';
   }>;
 }

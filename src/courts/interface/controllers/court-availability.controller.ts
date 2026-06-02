@@ -1,14 +1,19 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { CourtAvailabilityService } from '../../application/services/court-availability.service';
 import {
   AvailabilityCourtsQuery,
   AvailabilityHoursQuery,
 } from '../dto/availability.query';
 import { isValidHHmm, isValidYMD } from '../../../whatsapp/application/services/time.utils';
+import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
 
 @Controller('courts/availability')
 export class CourtAvailabilityController {
-  constructor(private readonly availability: CourtAvailabilityService) {}
+  constructor(
+    private readonly availability: CourtAvailabilityService,
+    @Inject('CourtPricingRepository')
+    private readonly pricingRepo: CourtPricingRepository,
+  ) {}
 
   @Get('hours')
   async hours(@Query() query: AvailabilityHoursQuery) {
@@ -27,6 +32,7 @@ export class CourtAvailabilityController {
           openTime: window.openTime,
           closeTime: window.closeTime,
           slotMinutes: window.slotMinutes,
+          priceSlot: window.priceSlot,
         },
         slots: slots.map((slot) => ({
           time: slot.time,
@@ -59,6 +65,7 @@ export class CourtAvailabilityController {
             endTime: result.slot.end.toISOString(),
           }
         : null,
+      priceSlot: result.window?.priceSlot ?? null,
       window: result.window
         ? {
             id: result.window.id,
@@ -67,19 +74,52 @@ export class CourtAvailabilityController {
             openTime: result.window.openTime,
             closeTime: result.window.closeTime,
             slotMinutes: result.window.slotMinutes,
+            priceSlot: result.window.priceSlot,
           }
         : null,
-      courts: result.courts.map((court) => ({
-        id: court.id,
-        name: court.name,
-        type: court.type,
-        active: court.active,
-        defaultAmPrice: court.defaultAmPrice,
-        defaultPmPrice: court.defaultPmPrice,
-        currency: court.currency,
-        priceCutoff: court.priceCutoff,
-      })),
+      courts: await Promise.all(
+        result.courts.map(async (court) => {
+          const pricing = await this.pricingRepo.getPricingFor(court.id, date);
+          const priceSlot =
+            result.window?.priceSlot ?? this.resolveSlotByCutoff(time, pricing.cutoff);
+          const priceApplied =
+            priceSlot === 'AM' ? pricing.amPrice : pricing.pmPrice;
+
+          return {
+            id: court.id,
+            name: court.name,
+            type: court.type,
+            active: court.active,
+            defaultAmPrice: court.defaultAmPrice,
+            defaultPmPrice: court.defaultPmPrice,
+            currency: pricing.currency ?? court.currency,
+            priceCutoff: court.priceCutoff,
+            priceSlot,
+            priceApplied,
+            pricingSource: pricing.source,
+          };
+        }),
+      ),
     };
+  }
+
+
+  private resolveSlotByCutoff(
+    time: string,
+    cutoff?: string | null,
+  ): 'AM' | 'PM' {
+    const minutes = this.hhmmToMinutes(time);
+
+    if (!cutoff) {
+      return minutes < 13 * 60 ? 'AM' : 'PM';
+    }
+
+    return minutes < this.hhmmToMinutes(cutoff) ? 'AM' : 'PM';
+  }
+
+  private hhmmToMinutes(hhmm: string): number {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
   }
 
   private requireCourtType(value?: string): string {
