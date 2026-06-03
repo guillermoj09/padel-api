@@ -124,6 +124,92 @@ export class ReservationFlow {
     );
   }
 
+  private normalizePriceSlot(value?: string | null): 'AM' | 'PM' | null {
+    const normalized = String(value ?? '').trim().toUpperCase();
+
+    if (normalized === 'AM' || normalized === 'PM') {
+      return normalized;
+    }
+
+    return null;
+  }
+
+  private formatMoney(value?: number | string | null, currency = 'CLP'): string {
+    const amount = Number(value);
+    const safeCurrency = String(currency || 'CLP').trim() || 'CLP';
+
+    if (!Number.isFinite(amount)) {
+      return 'Por definir';
+    }
+
+    try {
+      return new Intl.NumberFormat('es-CL', {
+        style: 'currency',
+        currency: safeCurrency,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      const formatted = new Intl.NumberFormat('es-CL', {
+        maximumFractionDigits: 0,
+      }).format(amount);
+
+      return `${formatted} ${safeCurrency}`;
+    }
+  }
+
+  private async getWindowPriceText(
+    courts: Court[],
+    ymd: string,
+    priceSlot?: string | null,
+  ): Promise<string> {
+    const slot = this.normalizePriceSlot(priceSlot);
+
+    if (!slot) {
+      return 'Tarifa por definir';
+    }
+
+    const prices = await Promise.all(
+      courts.map(async (court) => {
+        try {
+          const pricing = await this.pricingRepo.getPricingFor(court.id, ymd);
+          const amount = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
+
+          return {
+            amount: Number(amount),
+            currency: pricing.currency ?? court.currency ?? 'CLP',
+          };
+        } catch {
+          const amount =
+            slot === 'AM' ? court.defaultAmPrice : court.defaultPmPrice;
+
+          return {
+            amount: Number(amount),
+            currency: court.currency ?? 'CLP',
+          };
+        }
+      }),
+    );
+
+    const validPrices = prices.filter((item) =>
+      Number.isFinite(Number(item.amount)),
+    );
+
+    if (!validPrices.length) {
+      return `Tarifa ${slot}`;
+    }
+
+    const currency = validPrices[0].currency ?? 'CLP';
+    const amounts = validPrices.map((item) => Number(item.amount));
+    const min = Math.min(...amounts);
+    const max = Math.max(...amounts);
+
+    if (min === max) {
+      return `Tarifa ${this.formatMoney(min, currency)}`;
+    }
+
+    return `Desde ${this.formatMoney(min, currency)}`;
+  }
+
   private async getAvailableSlotsAcrossCourts(ymd: string): Promise<string[]> {
     const blocks = await this.availability.getAvailableHours(
       this.config.courtType,
@@ -154,7 +240,9 @@ export class ReservationFlow {
       ymd,
       time,
     );
-    const priceSlotFromWindow = result.window?.priceSlot ?? null;
+    const priceSlotFromWindow = this.normalizePriceSlot(
+      result.window?.priceSlot ?? null,
+    );
 
     return Promise.all(
       result.courts.map(async (court) => {
@@ -162,11 +250,12 @@ export class ReservationFlow {
         const slot =
           priceSlotFromWindow ?? this.resolveSlotByCutoff(time, pricing.cutoff);
         const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
+        const currency = pricing.currency ?? court.currency ?? 'CLP';
 
         return {
           id: `cancha_${court.id}`,
           title: court.name,
-          description: `Precio ${slot} ${priceApplied} ${pricing.currency ?? court.currency ?? 'CLP'}`,
+          description: `${slot} · ${this.formatMoney(priceApplied, currency)}`,
           courtId: court.id,
         };
       }),
@@ -186,7 +275,8 @@ export class ReservationFlow {
     );
 
     const slot =
-      window?.priceSlot ?? this.resolveSlotByCutoff(session.time, pricing.cutoff);
+      this.normalizePriceSlot(window?.priceSlot ?? null) ??
+      this.resolveSlotByCutoff(session.time, pricing.cutoff);
     const priceApplied = slot === 'AM' ? pricing.amPrice : pricing.pmPrice;
 
     session.priceApplied = priceApplied;
@@ -215,7 +305,7 @@ export class ReservationFlow {
       return 'Por definir';
     }
 
-    return `${value}${currency ? ` ${currency}` : ''}`;
+    return this.formatMoney(value, currency || 'CLP');
   }
 
   private async buildConfirmationMessage(session: Session): Promise<string> {
@@ -281,17 +371,24 @@ export class ReservationFlow {
       return;
     }
 
-    const blockTexts = blocks.map(({ window, slots: blockSlots }) => {
-      const emoji = window.emoji ?? '🕒';
+    const blockTexts = await Promise.all(
+      blocks.map(async ({ window, slots: blockSlots }) => {
+        const emoji = window.emoji ?? '🕒';
+        const priceText = await this.getWindowPriceText(
+          courts,
+          ymd,
+          window.priceSlot,
+        );
 
-      if (!blockSlots.length) {
-        return `${emoji} *${window.label}* · Tarifa ${window.priceSlot}:\n• Sin horarios disponibles`;
-      }
+        if (!blockSlots.length) {
+          return `${emoji} *${window.label}* · ${priceText}:\n• Sin horarios disponibles`;
+        }
 
-      return `${emoji} *${window.label}* · Tarifa ${window.priceSlot}:\n${blockSlots
-        .map((slot) => `• ${slot.time}`)
-        .join('\n')}`;
-    });
+        return `${emoji} *${window.label}* · ${priceText}:\n${blockSlots
+          .map((slot) => `• ${slot.time}`)
+          .join('\n')}`;
+      }),
+    );
 
     await this.messenger.sendText(
       from,
@@ -807,7 +904,10 @@ export class ReservationFlow {
           `• Cancha: ${await this.getCourtLabel(session.cancha)}\n` +
           `• Fecha: ${ymdToDmy(session.date)}\n` +
           `• Hora: ${session.time}\n` +
-          `• Precio: ${created.priceApplied} ${created.currencyApplied ?? ''}\n\n` +
+          `• Precio: ${this.formatMoney(
+            created.priceApplied,
+            created.currencyApplied ?? 'CLP',
+          )}\n\n` +
           `Escribe **menu** para una nueva reserva o **salir** para terminar.`,
       );
 
