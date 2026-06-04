@@ -1,5 +1,5 @@
 // src/events/application/dto/cancel-booking-input.ts
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CancelBookingDto {
   @IsOptional()
@@ -11,4 +11,8 @@ export class CancelBookingDto {
   @IsString()
   @IsOptional()
   by!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyCustomer?: boolean;
 }

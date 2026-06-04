@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { Booking } from '../../domain/entities/booking';
 import { BookingRepository } from '../../domain/repositories/booking.repository';
 import { CancelBookingDto } from '../dto/cancel-booking-input';
+import { BookingWhatsappNotificationService } from '../services/booking-whatsapp-notification.service';
 
 type Who = { kind: 'admin' | 'user' | 'wa'; value: string };
 
@@ -39,6 +40,7 @@ export class CancelBookingUseCase {
     @Inject('BookingRepository')
     private readonly repo: BookingRepository,
     private readonly config: ConfigService,
+    private readonly bookingWhatsappNotification: BookingWhatsappNotificationService,
   ) {}
 
   async execute(
@@ -91,6 +93,12 @@ export class CancelBookingUseCase {
       reason: dto.reason ?? null,
       by: `${who.kind}:${who.value}`,
     });
+
+    if (who.kind === 'admin' && dto.notifyCustomer === true) {
+      await this.bookingWhatsappNotification.notifyBookingCancelled(updated, {
+        reason: dto.reason ?? null,
+      });
+    }
 
     return updated;
   }

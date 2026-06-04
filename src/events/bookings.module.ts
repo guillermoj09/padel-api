@@ -24,6 +24,9 @@ import { CancelCourtBlockUseCase } from './application/use-cases/cancel-court-bl
 import { GetCourtBlocksByCourtAndRangeUseCase } from './application/use-cases/get-court-blocks-by-court-and-range.use-case';
 import { CourtBlocksController } from './interface/controllers/court-blocks.controller';
 import { GetCourtCalendarUseCase } from './application/use-cases/get-court-calendar.use-case';
+import { BookingWhatsappNotificationService } from './application/services/booking-whatsapp-notification.service';
+import { WebhookService } from 'src/whatsapp/interface/services/webhook.service';
+import { WhatsappMessengerAdapter } from 'src/whatsapp/infrastructure/messaging/whatsapp.messenger.adapter';
 
 @Module({
   imports: [
@@ -49,6 +52,9 @@ import { GetCourtCalendarUseCase } from './application/use-cases/get-court-calen
     CancelCourtBlockUseCase,
     GetCourtBlocksByCourtAndRangeUseCase,
     GetCourtCalendarUseCase,
+    WebhookService,
+    WhatsappMessengerAdapter,
+    BookingWhatsappNotificationService,
     TypeOrmBookingRepository,
     {
       provide: 'BookingRepository',
