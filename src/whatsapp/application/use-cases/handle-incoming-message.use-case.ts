@@ -21,6 +21,8 @@ import {
   PADEL_RESERVATION_CONFIG,
 } from '../flows/reservation.config';
 
+const WHATSAPP_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hora
+
 @Injectable()
 export class HandleIncomingMessageUseCase {
   private readonly reservationPadel: ReservationFlow;
@@ -77,7 +79,19 @@ export class HandleIncomingMessageUseCase {
   }
 
   private async setSession(from: string, session: Session): Promise<void> {
-    await this.sessions.set(from, session);
+    await this.sessions.set(from, { ...session, updatedAt: Date.now() });
+  }
+
+  private isExpiredSession(session: Session): boolean {
+    if (session.step === 'idle') {
+      return false;
+    }
+
+    if (!session.updatedAt) {
+      return true;
+    }
+
+    return Date.now() - session.updatedAt > WHATSAPP_SESSION_TTL_MS;
   }
 
   private buildCleanSession(session: Session): Session {
@@ -128,7 +142,28 @@ export class HandleIncomingMessageUseCase {
     const waFrom = normalizeE164(from);
     const payload = (rawPayload ?? '').trim();
     const p = payload.toLowerCase();
-    const session = await this.getSession(waFrom);
+    let session = await this.getSession(waFrom);
+
+    if (this.isExpiredSession(session)) {
+      await this.sessions.del(waFrom);
+
+      const cleanSession = await this.ensureContact(
+        waFrom,
+        this.buildCleanSession(session),
+      );
+
+      if (p === 'menu' || p === 'start' || p === 'inicio') {
+        await this.handleMenu(waFrom, cleanSession);
+        return;
+      }
+
+      await this.setSession(waFrom, cleanSession);
+      await this.messenger.sendText(
+        waFrom,
+        'Tu sesión anterior expiró por seguridad. Escribe *menu* para comenzar nuevamente.',
+      );
+      return;
+    }
 
     const wantsToCancelReservation = [
       'cancelar',

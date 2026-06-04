@@ -1,5 +1,10 @@
 // src/events/application/use-cases/create-booking.use-case.ts
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import {
   Booking,
   BookingStatus,
@@ -82,6 +87,12 @@ export class CreateBookingUseCase {
     if (Number.isNaN(end.getTime()) || end <= start) {
       throw new ConflictException(
         'endTime inválido (debe ser mayor a startTime)',
+      );
+    }
+
+    if (start <= new Date()) {
+      throw new BadRequestException(
+        'No puedes crear una reserva en una hora pasada.',
       );
     }
 
@@ -209,6 +220,7 @@ export class CreateBookingUseCase {
 
     return this.repo.create(toCreate);
   }
+
 
   private async resolveContactId(
     dto: CreateBookingDto,

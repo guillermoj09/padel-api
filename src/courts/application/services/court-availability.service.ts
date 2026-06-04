@@ -84,17 +84,12 @@ export class CourtAvailabilityService {
       return { window: null, slot: null, courts: [] };
     }
 
-    const allowedHours = getAvailableHours(ymd, {
-      open: window.openTime,
-      close: window.closeTime,
-      slotMinutes: window.slotMinutes,
-    });
+    const slot = this.buildSlot(ymd, time, window);
 
-    if (!allowedHours.includes(time)) {
-      return { window, slot: null, courts: [] };
+    if (slot.start <= new Date()) {
+      return { window, slot, courts: [] };
     }
 
-    const slot = this.buildSlot(ymd, time, window);
     const courts = await this.listActiveCourts(courtType);
     const busyByCourt = await this.getBusyByCourt(courts, ymd);
 

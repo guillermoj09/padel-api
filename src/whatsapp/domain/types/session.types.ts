@@ -35,4 +35,7 @@ export type Session = {
   pricingSource?: 'DAILY' | 'COURT_DEFAULT' | 'RATE_CARD' | null;
   slotApplied?: 'AM' | 'PM' | null;
   cutoffApplied?: string | null;
+
+  /** Marca de tiempo Unix en ms. Se usa para expirar flujos antiguos de WhatsApp. */
+  updatedAt?: number;
 };

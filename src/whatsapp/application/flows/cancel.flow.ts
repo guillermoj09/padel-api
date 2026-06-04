@@ -24,7 +24,7 @@ export class CancelFlow {
   ) {}
 
   private async setSession(from: string, s: Session) {
-    await this.sessions.set(from, s);
+    await this.sessions.set(from, { ...s, updatedAt: Date.now() });
   }
   private async clearSession(from: string) {
     await this.sessions.del(from);

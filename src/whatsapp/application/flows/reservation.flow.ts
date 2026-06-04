@@ -1,7 +1,7 @@
 import { MessengerPort } from '../../domain/ports/messenger.port';
 import { SessionStorePort } from '../../domain/ports/session.store.port';
 import { Session } from '../../domain/types/session.types';
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CreateBookingUseCase } from '../../../events/application/use-cases/create-booking.use-case';
 import { BookingStatus, PaymentMethod } from '../../../events/domain/entities/booking';
 import { CourtPricingRepository } from '../../../events/domain/repositories/court-pricing.repository';
@@ -38,7 +38,7 @@ export class ReservationFlow {
   ) {}
 
   private async setSession(from: string, s: Session) {
-    await this.sessions.set(from, s);
+    await this.sessions.set(from, { ...s, updatedAt: Date.now() });
   }
 
   private normalizeText(value?: string | null): string {
@@ -857,6 +857,25 @@ export class ReservationFlow {
       session.time,
     );
 
+    if (!result.slot) {
+      session.step = 'choose_time';
+      await this.setSession(from, session);
+      await this.messenger.sendText(
+        from,
+        'No pude calcular ese horario. Elige otra hora disponible.',
+      );
+      return;
+    }
+
+    if (result.slot.start <= new Date()) {
+      await this.sessions.del(from);
+      await this.messenger.sendText(
+        from,
+        'Ese horario ya pasó y no se puede reservar. Escribe *menu* para comenzar nuevamente.',
+      );
+      return;
+    }
+
     if (!result.courts.some((court) => court.id === Number(session.cancha))) {
       session.step = 'choose_time';
       delete session.cancha;
@@ -869,16 +888,6 @@ export class ReservationFlow {
           `Elige otra hora o vuelve a seleccionar una cancha.`,
       );
       await this.sendAvailabilityAcrossCourts(from, session, session.date);
-      return;
-    }
-
-    if (!result.slot) {
-      session.step = 'choose_time';
-      await this.setSession(from, session);
-      await this.messenger.sendText(
-        from,
-        'No pude calcular ese horario. Elige otra hora disponible.',
-      );
       return;
     }
 
@@ -915,7 +924,12 @@ export class ReservationFlow {
     } catch (e: any) {
       const msg = e?.response?.message ?? e?.message;
 
-      if (e instanceof ConflictException || e?.status === 409) {
+      if (
+        e instanceof ConflictException ||
+        e instanceof BadRequestException ||
+        e?.status === 409 ||
+        e?.status === 400
+      ) {
         await this.messenger.sendText(
           from,
           `⚠️ No se pudo crear la reserva: ${
